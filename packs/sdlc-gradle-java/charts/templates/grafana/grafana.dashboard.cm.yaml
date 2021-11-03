@@ -1,0 +1,19 @@
+{{ if .Values.grafana.enabled }}
+  {{ $chartName := include "fullname" . }}
+  {{ $labels := include "labels" . }}
+  {{ $grafanaLabels := .Values.grafana.labels }}
+  {{ range $path, $_ := $.Files.Glob "grafana/*.json" }}
+  {{ $name := trimSuffix (ext $path) (base $path) }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{  printf "%s-%s" $chartName $name | trunc 63 | trimSuffix "-"  | replace "." "-" }}
+  labels:
+  {{- $labels | nindent 4 }}
+  {{- toYaml $grafanaLabels | nindent 4 }}
+data:
+  {{ base $path }}: |-
+    {{- $.Files.Get $path | nindent 4 }}
+    {{ end }}
+  {{- end }}

@@ -1,0 +1,29 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: preview
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.20.0"
+spec:
+  description: create preview environment
+  workspaces:
+    - name: source
+      description: sources dir
+  params:
+    - name: JX_PREVIEW
+    - name: PREVIEW_ENABLED
+      type: string
+      description: enable preview environment creation
+      default: "true"
+  steps:
+    - image: $(params.JX_PREVIEW)
+      name: promote-jx-preview
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env sh
+        source .jx/variables.sh
+        if [ "$(params.PREVIEW_ENABLED)" == "true" ]; then
+          jx preview create
+        else
+          echo "preview environment disabled"
+        fi

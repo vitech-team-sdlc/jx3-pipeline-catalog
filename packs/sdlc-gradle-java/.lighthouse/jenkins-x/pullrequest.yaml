@@ -1,0 +1,149 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  name: pullrequest
+spec:
+  params:
+    - name: JX_BOOT
+      value: "ghcr.io/jenkins-x/jx-boot:3.2.211"
+    - name: JX_PREVIEW
+      value: "ghcr.io/jenkins-x-plugins/jx-preview:0.0.192"
+    - name: ODC_CVSS
+      value: "9"
+    - name: TRIVY_SEVERITY
+      value: "CRITICAL"
+    - name: DOCKLE_EXIT_LEVEL
+      value: "fatal"
+    - name: PREVIEW_ENABLED
+      value: "false"
+    - name: BP_BUILDER_IMAGE
+      value: "paketobuildpacks/builder:base"
+    - name: GRADLE_ARGS
+      value: "--no-daemon clean build integrationTest"
+  pipelineSpec:
+    workspaces:
+      - name: source
+        description: This workspace will receive the cloned git repo and be passed to the next Task.
+        optional: false
+    tasks:
+      - name: pullrequest
+        params:
+          - name: JX_BOOT
+            value: "ghcr.io/jenkins-x/jx-boot:3.2.197"
+          - name: JX_PREVIEW
+            value: "ghcr.io/jenkins-x-plugins/jx-preview:0.0.192"
+          - name: ODC_CVSS
+            value: "9"
+          - name: TRIVY_SEVERITY
+            value: "CRITICAL"
+          - name: DOCKLE_EXIT_LEVEL
+            value: "fatal"
+          - name: PREVIEW_ENABLED
+            value: "false"
+          - name: PROJECT_NAME
+            value: "$(params.REPO_NAME)"
+          - name: SONAR_PROJECT_NAME
+            value: "$(params.REPO_NAME)"
+          - name: BP_BUILDER_IMAGE
+            value: "$(params.BP_BUILDER_IMAGE)"
+          - name: SONAR_PROJECT_KEY
+            value: "$(params.REPO_OWNER):$(params.REPO_NAME)"
+          - name: SONAR_PR_KEY
+            value: "$(params.PULL_NUMBER)"
+          - name: SONAR_PR_BASE
+            value: "$(params.PULL_BASE_REF)"
+          - name: GRADLE_ARGS
+            value: "$(params.GRADLE_ARGS)"
+        workspaces:
+          - name: source
+            workspace: source
+        taskSpec:
+          stepTemplate:
+            image: uses:jenkins-x/jx3-pipeline-catalog/tasks/gradle/pullrequest.yaml@versionStream
+            name: ""
+            resources:
+              requests:
+                cpu: 400m
+                memory: 512Mi
+            env:
+              - name: GIT_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    key: password
+                    name: tekton-git
+              - name: GIT_USER
+                valueFrom:
+                  secretKeyRef:
+                    key: username
+                    name: tekton-git
+          sidecars:
+            - image: docker:19.03.15-dind
+              name: server
+              args:
+                - --storage-driver=vfs
+                - --userland-proxy=false
+                - --debug
+              securityContext:
+                privileged: true
+              env:
+                - name: DOCKER_TLS_CERTDIR
+                  value: /certs
+              volumeMounts:
+                - mountPath: /var/lib/docker
+                  name: dind-storage
+                - mountPath: /var/run/
+                  name: dind-socket
+                - mountPath: /certs/client
+                  name: dind-certs
+              resources:
+                limits:
+                  memory: 3Gi
+                requests:
+                  cpu: 100m
+                  memory: 1Gi
+          steps:
+            - image: uses:.lighthouse/.definitions/sdlc/git-clone-pr.yaml
+              name: ""
+              resources: { }
+            - name: jx-variables
+              resources: { }
+            - name: check-registry
+              resources: { }
+            - image: uses:.lighthouse/.definitions/sdlc/pr-info.yaml
+              name: ""
+            - image: uses:.lighthouse/.definitions/sdlc/conventional-commits.yaml
+              name: ""
+            - image: uses:.lighthouse/.definitions/sdlc/secrets-scanner.yaml
+              name: ""
+            - image: uses:.lighthouse/.definitions/sdlc/gradle.yaml
+              name: ""
+            - image: uses:.lighthouse/.definitions/sdlc/sonarqube-scanner.yaml
+              name: ""
+            - image: uses:.lighthouse/.definitions/sdlc/buildpacks.yaml
+              name: ""
+            - image: uses:.lighthouse/.definitions/sdlc/container-scan.yaml
+              name: ""
+            - image: uses:.lighthouse/.definitions/sdlc/owasp-dependencies-check.yaml
+              name: ""
+            - image: uses:.lighthouse/.definitions/sdlc/preview.yaml
+              name: ""
+          volumes:
+            - name: dind-storage
+              emptyDir: { }
+            - name: dind-socket
+              emptyDir: { }
+            - name: dind-certs
+              emptyDir: { }
+  serviceAccountName: tekton-bot
+  workspaces:
+    - name: source
+      emptyDir: { }
+  timeout: 20m
+  podTemplate:
+    nodeSelector:
+      pipelines: "true"
+    tolerations:
+      - key: "pipelines"
+        operator: "Equal"
+        value: "true"
+        effect: "PreferNoSchedule"

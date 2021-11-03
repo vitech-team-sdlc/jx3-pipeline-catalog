@@ -1,0 +1,140 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  name: release
+spec:
+  params:
+    - name: JX_BOOT
+      value: "ghcr.io/jenkins-x/jx-boot:3.2.211"
+    - name: JX_RELEASE
+      value: "ghcr.io/jenkins-x/jx-release-version:2.5.0"
+    - name: JX_REGISTRY
+      value: "ghcr.io/jenkins-x/jx-registry:0.1.1"
+    - name: JX_CHANGELOG
+      value: "ghcr.io/jenkins-x/jx-changelog:0.0.47"
+    - name: JX_PROMOTE
+      value: "ghcr.io/jenkins-x-plugins/jx-promote:0.1.0"
+    - name: SONAR_PR_KEY
+      value: ""
+    - name: BP_BUILDER_IMAGE
+      value: "paketobuildpacks/builder:base"
+    - name: GRADLE_ARGS
+      value: "--no-daemon clean build integrationTest"
+  pipelineSpec:
+    workspaces:
+      - name: source
+        description: This workspace will receive the cloned git repo and be passed to the next Task.
+        optional: false
+    tasks:
+      - name: release
+        params:
+          - name: JX_BOOT
+            value: "$(params.JX_BOOT)"
+          - name: JX_RELEASE
+            value: "$(params.JX_RELEASE)"
+          - name: JX_REGISTRY
+            value: "$(params.JX_REGISTRY)"
+          - name: JX_CHANGELOG
+            value: "$(params.JX_CHANGELOG)"
+          - name: JX_PROMOTE
+            value: "$(params.JX_PROMOTE)"
+          - name: BP_BUILDER_IMAGE
+            value: "paketobuildpacks/builder:base"
+          - name: GRADLE_ARGS
+            value: "--no-daemon clean build integrationTest"
+          - name: SONAR_PROJECT_NAME
+            value: "$(params.REPO_NAME)"
+          - name: SONAR_PROJECT_KEY
+            value: "$(params.REPO_OWNER):$(params.REPO_NAME)"
+          - name: SONAR_PR_KEY
+            value: ""
+          - name: SONAR_PR_BASE
+            value: "$(params.PULL_BASE_REF)"
+          - name: SLACK_CHANNEL
+            value: "$(params.SLACK_CHANNEL)"
+        workspaces:
+          - name: source
+            workspace: source
+        taskSpec:
+          stepTemplate:
+            image: uses:.lighthouse/.definitions/sdlc/release.yaml
+            name: ""
+            resources:
+              requests:
+                cpu: 400m
+                memory: 512Mi
+            env:
+              - name: GIT_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    key: password
+                    name: tekton-git
+              - name: GIT_USER
+                valueFrom:
+                  secretKeyRef:
+                    key: username
+                    name: tekton-git
+          sidecars:
+            - image: docker:19.03.15-dind
+              name: server
+              args:
+                - --storage-driver=vfs
+                - --userland-proxy=false
+                - --debug
+              securityContext:
+                privileged: true
+              env:
+                - name: DOCKER_TLS_CERTDIR
+                  value: /certs
+              volumeMounts:
+                - mountPath: /var/lib/docker
+                  name: dind-storage
+                - mountPath: /var/run/
+                  name: dind-socket
+                - mountPath: /certs/client
+                  name: dind-certs
+              resources:
+                limits:
+                  memory: 3Gi
+                requests:
+                  cpu: 100m
+                  memory: 1Gi
+          steps:
+            - image: uses:.lighthouse/.definitions/sdlc/git-clone.yaml
+              name: ""
+            - name: next-version
+            - name: jx-variables
+            - name: check-registry
+            - image: uses:.lighthouse/.definitions/sdlc/pr-info.yaml
+              name: ""
+            - image: uses:.lighthouse/.definitions/sdlc/gradle.yaml
+              name: ""
+            - image: uses:.lighthouse/.definitions/sdlc/sonarqube-scanner.yaml
+              name: ""
+            - image: uses:.lighthouse/.definitions/sdlc/buildpacks.yaml
+              name: ""
+            - name: promote-changelog
+            - name: promote-helm-release
+            - name: promote-jx-promote
+            - image: uses:.lighthouse/.definitions/sdlc/release-slack-notify.yaml
+              name: ""
+          volumes:
+            - name: dind-storage
+              emptyDir: { }
+            - name: dind-socket
+              emptyDir: { }
+            - name: dind-certs
+              emptyDir: { }
+  serviceAccountName: tekton-bot
+  workspaces:
+    - name: source
+      emptyDir: { }
+  timeout: 20m
+  podTemplate:
+    nodeSelector:
+      pipelines: "true"
+    tolerations:
+      - key: "pipelines"
+        operator: "Equal"
+        value: "true"
+        effect: "PreferNoSchedule"

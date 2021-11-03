@@ -1,0 +1,28 @@
+{{- if or .Values.knativeDeploy .Values.canary.enabled }}
+  {{- else }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fullname" . | quote }}
+  labels:
+  {{- include "labels" . | nindent 4 }}
+  annotations:
+  {{- with .Values.service.annotations }}
+  {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.externalPort }}
+      targetPort: {{ .Values.service.internalPort }}
+      protocol: TCP
+      name: http
+    {{- if .Values.actuator.enabled }}
+    - name: {{ .Values.actuator.name | quote}}
+      protocol: TCP
+      port:  {{ .Values.actuator.port }}
+      targetPort: {{ .Values.actuator.name | quote}}
+  {{- end }}
+  selector:
+  {{- include "selectorLabels" . | nindent 4 }}
+  {{- end }}

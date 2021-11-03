@@ -1,0 +1,86 @@
+{{- if .Values.knativeDeploy }}
+  {{- else }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "fullname" . }}
+  labels:
+  {{- include "labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+  {{- include "selectorLabels" . | nindent 6 }}
+  {{- if .Values.hpa.enabled }}
+  {{- else }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+      {{- include "labels" . | nindent 8 }}
+      {{- if .Values.podAnnotations }}
+      annotations:
+    {{ toYaml .Values.podAnnotations | indent 8 }}
+    {{- end }}
+    spec:
+      {{- if .Values.serviceAccount.enabled }}
+      serviceAccountName: {{ template "serviceAccountName" . }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            - name: VERSION
+              value: {{ .Chart.Version }}
+            {{- if .Values.envValueFrom }}
+            {{ toYaml .Values.envValueFrom | indent 8 }}
+            {{- end}}
+            {{- range $pkey, $pval := .Values.env }}
+            - name: {{ $pkey }}
+              value: {{ quote $pval }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ int .Values.service.internalPort }}
+            {{- if .Values.actuator.enabled }}
+            - name: {{ .Values.actuator.name | quote}}
+              containerPort: {{ .Values.livenessProbe.port }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.livenessProbe.probePath }}
+              port: {{ .Values.livenessProbe.port }}
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+            successThreshold: {{ .Values.livenessProbe.successThreshold }}
+            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.readinessProbe.probePath }}
+              port: {{ .Values.readinessProbe.port }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+            successThreshold: {{ .Values.readinessProbe.successThreshold }}
+            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+          resources:
+      {{- toYaml .Values.resources | nindent 12 }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      imagePullSecrets:
+        {{- range $pval := .Values.jx.imagePullSecrets }}
+        - name: {{ quote $pval }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+      {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+      {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+      {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- end }}
