@@ -67,10 +67,15 @@ spec:
             - image: uses:.lighthouse/.definitions/sdlc/git-clone-pr.yaml
               name: ""
               resources: { }
-            - name: jx-variables
-              resources: { }
-            - name: check-registry
-              resources: { }
+            - image: $(params.JX_BOOT)
+              name: jx-variables
+              workingDir: $(workspaces.source.path)
+              script: |
+                #!/usr/bin/env sh
+                jx gitops variables
+                jx gitops pr variables
+            - image: ghcr.io/jenkins-x/jx-registry:0.1.1
+              name: check-registry
             - image: uses:.lighthouse/.definitions/sdlc/pr-info.yaml
               name: ""
             - image: uses:.lighthouse/.definitions/sdlc/conventional-commits.yaml
