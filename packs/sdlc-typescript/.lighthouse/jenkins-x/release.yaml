@@ -1,56 +1,92 @@
 apiVersion: tekton.dev/v1beta1
 kind: PipelineRun
 metadata:
-  creationTimestamp: null
   name: release
 spec:
+  params:
+    - name: JX_BOOT
+      value: "ghcr.io/jenkins-x/jx-boot:3.2.211"
+    - name: JX_RELEASE
+      value: "ghcr.io/jenkins-x/jx-release-version:2.5.0"
+    - name: JX_REGISTRY
+      value: "ghcr.io/jenkins-x/jx-registry:0.1.1"
+    - name: JX_CHANGELOG
+      value: "ghcr.io/jenkins-x/jx-changelog:0.0.47"
+    - name: JX_PROMOTE
+      value: "ghcr.io/jenkins-x-plugins/jx-promote:0.1.0"
+    - name: BP_BUILDER_IMAGE
+      value: "paketobuildpacks/builder:base"
+    - name: SLACK_CHANNEL
+      value: ""
   pipelineSpec:
+    workspaces:
+      - name: source
+        description: This workspace will receive the cloned git repo and be passed to the next Task.
+        optional: false
     tasks:
-    - name: from-build-pack
-      resources: {}
-      taskSpec:
-        metadata: {}
-        stepTemplate:
-          env:
-          - name: NPM_CONFIG_USERCONFIG
-            value: /tekton/home/npm/.npmrc
-          image: uses:jenkins-x/jx3-pipeline-catalog/tasks/typescript/release.yaml@versionStream
-          name: ""
-          resources:
-            requests:
-              cpu: 400m
-              memory: 512Mi
-          volumeMounts:
-          - mountPath: /tekton/home/npm
-            name: npmrc
-          workingDir: /workspace/source
-        steps:
-        - image: uses:jenkins-x/jx3-pipeline-catalog/tasks/git-clone/git-clone.yaml@versionStream
-          name: ""
-          resources: {}
-        - name: next-version
-          resources: {}
-        - name: jx-variables
-          resources: {}
-        - name: build-npm-install
-          resources: {}
-        - name: build-npm-test
-          resources: {}
-        - name: check-registry
-          resources: {}
-        - name: build-container-build
-          resources: {}
-        - name: promote-changelog
-          resources: {}
-        - name: promote-helm-release
-          resources: {}
-        - name: promote-jx-promote
-          resources: {}
-        volumes:
-        - name: npmrc
-          secret:
-            optional: true
-            secretName: npmrc
+      - name: release
+        params:
+          - name: JX_BOOT
+            value: "$(params.JX_BOOT)"
+          - name: JX_RELEASE
+            value: "$(params.JX_RELEASE)"
+          - name: JX_REGISTRY
+            value: "$(params.JX_REGISTRY)"
+          - name: JX_CHANGELOG
+            value: "$(params.JX_CHANGELOG)"
+          - name: JX_PROMOTE
+            value: "$(params.JX_PROMOTE)"
+          - name: BP_BUILDER_IMAGE
+            value: "paketobuildpacks/builder:base"
+          - name: SONAR_PROJECT_NAME
+            value: "$(params.REPO_NAME)"
+          - name: SONAR_PROJECT_KEY
+            value: "$(params.REPO_OWNER):$(params.REPO_NAME)"
+          - name: SONAR_PR_BASE
+            value: "$(params.PULL_BASE_REF)"
+          - name: SLACK_CHANNEL
+            value: "$(params.SLACK_CHANNEL)"
+        workspaces:
+          - name: source
+            workspace: source
+        taskSpec:
+          stepTemplate:
+            image: uses:.lighthouse/.definitions/sdlc/release.yaml
+            name: ""
+            resources:
+              requests:
+                cpu: 400m
+                memory: 512Mi
+            env:
+              - name: GIT_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    key: password
+                    name: tekton-git
+              - name: GIT_USER
+                valueFrom:
+                  secretKeyRef:
+                    key: username
+                    name: tekton-git
+          steps:
+            - image: uses:.lighthouse/.definitions/sdlc/git-clone.yaml
+              name: ""
+            - name: next-version
+            - name: jx-variables
+            - name: check-registry
+            - image: uses:.lighthouse/.definitions/sdlc/pr-info.yaml
+              name: ""
+            - image: uses:.lighthouse/.definitions/sdlc/node.yaml
+              name: ""
+            - image: uses:.lighthouse/.definitions/sdlc/sonarqube-scanner.yaml
+              name: ""
+            - image: uses:.lighthouse/.definitions/sdlc/buildpacks.yaml
+              name: ""
+            - name: promote-changelog
+            - name: promote-helm-release
+            - name: promote-jx-promote
+            - image: uses:.lighthouse/.definitions/sdlc/release-slack-notify.yaml
+              name: ""
   serviceAccountName: tekton-bot
   workspaces:
     - name: source

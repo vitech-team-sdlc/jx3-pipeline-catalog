@@ -34,6 +34,7 @@ spec:
       description: Project's unique key
     - name: SONAR_PR_KEY
       description: Project's unique key
+      default: ""
     - name: SONAR_SECRET
       description: Name of sonar secret
       default: "sonar"
