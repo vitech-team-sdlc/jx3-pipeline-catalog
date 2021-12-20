@@ -1,0 +1,195 @@
+# Source: tektonpipelines/templates/tasks/sonar.yaml
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: sonarqube-scanner
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.20.0"
+    tekton.dev/tags: security
+    tekton.dev/displayName: "sonar"
+spec:
+  description: >-
+    SONAR_TOKEN env variable should be provided.
+    The following task can be used to perform static analysis on the source code provided the SonarQube server
+    is hosted SonarQube is the leading tool for continuously inspecting the Code Quality and Security of your codebases,
+    all while empowering development teams. Analyze over 25 popular programming languages including C#, VB.Net, JavaScript, TypeScript and C++.
+    It detects bugs, vulnerabilities and code smells across project branches and pull requests.
+  workspaces:
+    - name: source
+  params:
+    - name: SONAR_HOST_URL
+      description: Host URL where the sonarqube server is running
+      default: "https://sonarcloud.io"
+    - name: SONAR_PROJECT_KEY
+      description: Project's unique key
+    - name: SONAR_PROJECT_NAME
+      description: Project's unique key
+    - name: SONAR_ORGANIZATION
+      description: Sonar organization
+      default: ""
+    - name: SONAR_PR_BRANCH
+      description: Project's unique key
+      default: ".source_branch"
+    - name: SONAR_PR_BASE
+      description: Project's unique key
+    - name: SONAR_PR_KEY
+      description: Project's unique key
+    - name: SONAR_SECRET
+      description: Name of sonar secret
+      default: "sonar"
+    - name: REPO_OWNER
+      description: repository owner
+    - name: REPO_NAME
+      description: repository name
+    - name: SONAR_IMAGE
+      description: "image of sonar-scanner-cli"
+      default: "sonarsource/sonar-scanner-cli:4.5"
+  results:
+    - name: url
+      description: Sonar analys URL
+  steps:
+    - name: sonar-properties-create
+      image: registry.access.redhat.com/ubi8/ubi-minimal:8.3
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: SONAR_ORGANIZATION
+          valueFrom:
+            secretKeyRef:
+              name: $(params.SONAR_SECRET)
+              key: sonar-organization
+        - name: SONAR_SCM_PROVIDER
+          valueFrom:
+            secretKeyRef:
+              name: $(params.SONAR_SECRET)
+              key: sonar-scm-provider
+      script: |
+        #!/usr/bin/env bash
+        replaceValues() {
+          filename=$1
+          thekey=$2
+          newvalue=$3
+          if ! grep -R "^[#]*\s*${thekey}=.*" $filename >/dev/null; then
+            echo "APPENDING because '${thekey}' not found"
+            echo "" >>$filename
+            echo "$thekey=$newvalue" >>$filename
+          else
+            echo "SETTING because '${thekey}' found already"
+            sed -ir "s|^[#]*\s*${thekey}=.*|$thekey=$newvalue|" $filename
+          fi
+        }
+
+        if [[ -f $(workspaces.source.path)/sonar-project.properties ]]; then
+          if [[ -n "$(params.SONAR_HOST_URL)" ]]; then
+            replaceValues $(workspaces.source.path)/sonar-project.properties sonar.host.url $(params.SONAR_HOST_URL)
+          fi
+          if [[ -n "$(params.SONAR_PROJECT_KEY)" ]]; then
+            replaceValues $(workspaces.source.path)/sonar-project.properties sonar.projectKey $(params.SONAR_PROJECT_KEY)
+          fi
+
+          if [[ -n "$(params.SONAR_PROJECT_NAME)" ]]; then
+            replaceValues $(workspaces.source.path)/sonar-project.properties sonar.projectName $(params.SONAR_PROJECT_NAME)
+          fi
+
+          if [[ -n "${SONAR_SCM_PROVIDER}" ]]; then
+              replaceValues $(workspaces.source.path)/sonar-project.properties sonar.scm.provider ${SONAR_SCM_PROVIDER}
+          fi
+
+          export PR_PROVIDER="github"
+
+          if [[ -n "$(params.REPO_OWNER)"  && -n "$(params.REPO_NAME)" ]]; then
+              replaceValues $(workspaces.source.path)/sonar-project.properties "sonar.pullrequest.${PR_PROVIDER}.repository" $(params.REPO_OWNER)/$(params.REPO_NAME)
+          fi
+
+          if [[ -n "${SONAR_ORGANIZATION}" ]]; then
+              replaceValues $(workspaces.source.path)/sonar-project.properties sonar.organization ${SONAR_ORGANIZATION}
+            else
+              if [[ -n "$(params.SONAR_ORGANIZATION)" ]]; then
+                replaceValues $(workspaces.source.path)/sonar-project.properties sonar.organization $(params.SONAR_ORGANIZATION)
+              fi
+          fi
+
+          SONAR_PR_BRANCH="$(cat $(params.SONAR_PR_BRANCH))"
+
+          if [[ -n "$SONAR_PR_BRANCH" ]]; then
+            replaceValues $(workspaces.source.path)/sonar-project.properties sonar.qualitygate.wait "true"
+            replaceValues $(workspaces.source.path)/sonar-project.properties sonar.pullrequest.branch "$SONAR_PR_BRANCH"
+            replaceValues $(workspaces.source.path)/sonar-project.properties sonar.pullrequest.base $(params.SONAR_PR_BASE)
+            replaceValues $(workspaces.source.path)/sonar-project.properties sonar.pullrequest.key $(params.SONAR_PR_KEY)
+          fi
+
+        else
+          touch sonar-project.properties
+          echo "sonar.projectKey=$(params.SONAR_PROJECT_KEY)" >> sonar-project.properties
+          echo "sonar.host.url=$(params.SONAR_HOST_URL)" >> sonar-project.properties
+          echo "sonar.sources=." >> sonar-project.properties
+        fi
+        echo "---------------------------"
+        cat $(workspaces.source.path)/sonar-project.properties
+    - name: sonar-scan
+      image: $(params.SONAR_IMAGE)
+      workingDir: $(workspaces.source.path)
+      script: |
+        sonar-scanner -Dsonar.login=${SONAR_TOKEN} >.sonar 2>&1  | echo "sonar failed"
+        cat .sonar
+        rm -rf .scannerwork
+      env:
+        - name: SONAR_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: $(params.SONAR_SECRET)
+              key: sonar-login
+    - name: sonar-publish-check
+      image: ghcr.io/vitech-team/sdlc-pipeline-helper:0.0.11
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        source $(workspaces.source.path)/.jx/variables.sh
+
+        if [[ -n "$(params.SONAR_PR_KEY)" ]]; then
+          export FAILED="$(cat .sonar | grep 'QUALITY GATE STATUS' | grep 'PASSED')"
+        else
+          export FAILED=$(cat .sonar | grep 'ANALYSIS SUCCESSFUL')
+        fi
+
+        if [[ -z "$FAILED" ]]; then
+          export CHECK_CONCLUSION="failure"
+        else
+          export CHECK_CONCLUSION="success"
+        fi
+
+        if [[ -n "$(params.SONAR_PR_KEY)" ]]; then
+          cat .sonar | grep "QUALITY GATE STATUS" | grep -Eo '(http|https).+' > .status_link
+          sdlcpipelinehelper check-publish \
+            --repoOwner="$(params.REPO_OWNER)"  --repoName="$(params.REPO_NAME)" --commit="$HEAD_COMMIT" \
+            --detailsUrl="$TEKTON_DAHBOARD_URL" \
+            --checkName="Sonar Check" \
+            --checkConclusion="$CHECK_CONCLUSION" \
+            --summary="Sonar status: $CHECK_CONCLUSION Details: $(cat .status_link)" \
+            --title="Qulity Gate: $CHECK_CONCLUSION"
+          rm .status_link
+        fi
+
+        rm .sonar
+
+        if [[ -z "$FAILED" ]]; then
+          echo "Oops!"
+          exit 1
+        else
+          echo "Wohoo!"
+        fi
+      env:
+        - name: GH_APP_ID
+          valueFrom:
+            secretKeyRef:
+              name: github-sdlc-app
+              key: appId
+        - name: GH_APP_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: github-sdlc-app
+              key: privateKey
+        - name: GH_APP_INSTALLATION_ID
+          valueFrom:
+            secretKeyRef:
+              name: github-sdlc-app
+              key: installId

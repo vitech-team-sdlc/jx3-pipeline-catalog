@@ -1,0 +1,189 @@
+# Source: tektonpipelines/templates/tasks/container-scan.yaml
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: container-scan
+spec:
+  description: |
+    Runs an image scan with Trivy and Dockle fails the build if issues are found.
+  workspaces:
+    - name: source
+      description: sources dir
+  params:
+    - name: scan-image
+      description: Flag indicating that a scan should be performed
+      default: "true"
+    - name: TRIVY_IMAGE
+      default: "aquasec/trivy:0.20.0"
+    - name: TRIVY_CACHE_PVC
+      default: "trivy-cache"
+    - name: TRIVY_SEVERITY
+      default: "CRITICAL"
+    - name: DOCKLE_IMAGE
+      default: "goodwithtech/dockle:v0.4.3"
+    - name: DOCKLE_EXIT_LEVEL
+      type: "string"
+      default: "warn"
+    - name: DOCKER_SOCKET_VOLUME
+      type: string
+      description: "Name of docker-socket volume to mount: /var/run/docker.sock"
+      default: "dind-socket"
+  stepTemplate:
+    name: ""
+    volumeMounts:
+      - name: $(params.DOCKER_SOCKET_VOLUME)
+        mountPath: /var/run/
+  volumes:
+    - name: $(params.TRIVY_CACHE_PVC)
+      persistentVolumeClaim:
+        claimName: trivy
+  results:
+    - name: dockle-result
+      description: dockle execution result
+    - name: trivy-result
+      description: trivy execution result
+  steps:
+    - name: cs-trivy
+      image: $(params.TRIVY_IMAGE)
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: tekton-git
+              key: password
+      script: |
+        source $(workspaces.source.path)/.jx/variables.sh
+
+        DOCKER_CUSTOM_CONF="$(workspaces.source.path)/.docker-config.json"
+
+        if [ -f "$DOCKER_CUSTOM_CONF" ]; then
+          mkdir -p /tekton/home/.docker/
+          cp $(workspaces.source.path)/.docker-config.json /tekton/home/.docker/config.json
+        fi
+
+        PERFORM_SCAN="$(params.scan-image)"
+        if [[ "${PERFORM_SCAN}" == "false" ]] || [[ -z "${PERFORM_SCAN}" ]]; then
+          echo "User selected to skip scanning. Skipping Trivy scan."
+          exit 0
+        fi
+
+        if trivy --cache-dir="/.trivycache/" image --ignore-unfixed="true" --no-progress --exit-code 0 --timeout 30m --severity "$(params.TRIVY_SEVERITY)" --format template --template "@.trivy.sarif.tpl" -o ".trivy-report.sarif" "$MINK_IMAGE" ; then
+          echo "0" > $(results.trivy-result.path)
+        else
+          echo "1" > $(results.trivy-result.path)
+        fi
+
+        echo "Continue..."
+      volumeMounts:
+        - name: $(params.TRIVY_CACHE_PVC)
+          mountPath: /.trivycache/
+    - name: trivy-publish-report
+      image: ghcr.io/vitech-team/sdlc-pipeline-helper:0.0.10
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+
+        source $(workspaces.source.path)/.jx/variables.sh
+
+        if [ "$(cat $(results.trivy-result.path))" == "0" ]; then
+          export CHECK_CONCLUSION="success"
+        else
+          export CHECK_CONCLUSION="failure"
+        fi
+
+        sdlcpipelinehelper sarif-publish \
+          --repoOwner="$(params.REPO_OWNER)"  --repoName="$(params.REPO_NAME)" --sourceRoot="$(workspaces.source.path)" --commit="$HEAD_COMMIT" \
+          --detailsUrl="$TEKTON_DAHBOARD_URL" \
+          --checkName="Trivy Container Check" \
+          --checkConclusion="$CHECK_CONCLUSION"
+
+        rm .trivy-report.sarif
+      env:
+        - name: GH_APP_ID
+          valueFrom:
+            secretKeyRef:
+              name: github-sdlc-app
+              key: appId
+        - name: GH_APP_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: github-sdlc-app
+              key: privateKey
+        - name: GH_APP_INSTALLATION_ID
+          valueFrom:
+            secretKeyRef:
+              name: github-sdlc-app
+              key: installId
+    - name: cs-dockle
+      image: $(params.DOCKLE_IMAGE)
+      workingDir: $(workspaces.source.path)
+      script: |
+        source $(workspaces.source.path)/.jx/variables.sh
+
+        PERFORM_SCAN="$(params.scan-image)"
+        if [[ "${PERFORM_SCAN}" == "false" ]] || [[ -z "${PERFORM_SCAN}" ]]; then
+          echo "User selected to skip scanning. Skipping Dockle scan."
+          exit 0
+        fi
+
+        if dockle -f sarif -o ".dockle-report.sarif"  --exit-code 1 --exit-level "$(params.DOCKLE_EXIT_LEVEL)" "$MINK_IMAGE" ; then
+          echo "0" > $(results.dockle-result.path)
+        else
+          echo "1" > $(results.dockle-result.path)
+        fi
+
+        echo "Continue..."
+    - name: dockle-publish-report
+      image: ghcr.io/vitech-team/sdlc-pipeline-helper:0.0.10
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        source $(workspaces.source.path)/.jx/variables.sh
+
+        if [ "$(cat $(results.dockle-result.path))" == "0" ]; then
+          export CHECK_CONCLUSION="success"
+        else
+          export CHECK_CONCLUSION="failure"
+        fi
+
+        sdlcpipelinehelper sarif-publish \
+          --repoOwner="$(params.REPO_OWNER)"  --repoName="$(params.REPO_NAME)" --sourceRoot="$(workspaces.source.path)" --commit="$HEAD_COMMIT" \
+          --detailsUrl="$TEKTON_DAHBOARD_URL" \
+          --checkName="Dockle Container Check" \
+          --checkConclusion="$CHECK_CONCLUSION"
+
+        rm .dockle-report.sarif
+      env:
+        - name: GH_APP_ID
+          valueFrom:
+            secretKeyRef:
+              name: github-sdlc-app
+              key: appId
+        - name: GH_APP_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: github-sdlc-app
+              key: privateKey
+        - name: GH_APP_INSTALLATION_ID
+          valueFrom:
+            secretKeyRef:
+              name: github-sdlc-app
+              key: installId
+    - name: cs-finish
+      image: $(params.DOCKLE_IMAGE)
+      workingDir: $(workspaces.source.path)
+      script: |
+        if [ "$(cat $(results.dockle-result.path))" == "1" ]; then
+          echo "Dockle scanning completed. $(params.DOCKLE_EXIT_LEVEL) Vulnerabilities found."
+          exit 1
+        else
+          echo "Dockle scanning completed. $(params.DOCKLE_EXIT_LEVEL) vulnerabilities not found."
+        fi
+
+        if [ "$(cat $(results.trivy-result.path))" == "1" ]; then
+          echo "Trivy scanning completed. $(params.TRIVY_SEVERITY) Vulnerabilities found."
+          exit 1
+        else
+          echo "Trivy scanning completed. $(params.TRIVY_SEVERITY) vulnerabilities not found."
+        fi

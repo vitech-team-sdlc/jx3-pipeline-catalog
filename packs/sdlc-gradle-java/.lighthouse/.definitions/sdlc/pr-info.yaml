@@ -1,0 +1,89 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: pr-info
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.20.0"
+spec:
+  description: Retrieve PR information from SCM provider
+  workspaces:
+    - name: source
+      description: sources dir
+  params:
+    - name: JX_BOOT
+  results:
+    - name: source_branch
+      description: name of the source branch
+  volumes:
+    - name: podinfo
+      downwardAPI:
+        items:
+            - path: "pipeline_name"
+              fieldRef:
+                fieldPath: "metadata.labels['tekton.dev/pipelineRun']"
+  steps:
+    - name: pi-fetch
+      image: $(params.JX_BOOT)
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env sh
+        if [[ -n "${PULL_NUMBER}" ]]; then
+            jx gitops pr get --git-token="$GIT_TOKEN" --pr="${PULL_NUMBER}"
+            jx gitops pr get --git-token="$GIT_TOKEN" --pr="${PULL_NUMBER}" &> pr.yaml
+          else
+            echo "not a pullrequest build"
+        fi
+      env:
+        - name: GIT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: tekton-git
+              key: password
+    - name: pi-save-branch-name
+      workingDir: $(workspaces.source.path)
+      image: mikefarah/yq:3.3.4
+      script: |
+        if [[ -n "${PULL_NUMBER}" ]]; then
+            yq r pr.yaml Source > $(results.source_branch.path)
+            yq r pr.yaml Source > .source_branch
+            rm pr.yaml
+            echo "Soure branch is: $(cat $(results.source_branch.path))"
+          else
+            echo "not a pullrequest build"
+        fi
+    - name: pi-add-environment-variables
+      image: docker.io/amazon/aws-cli:2.0.52@sha256:1506cec98a7101c935176d440a14302ea528b8f92fcaf4a6f1ea2d7ecef7edc4
+      workingDir: $(workspaces.source.path)
+      volumeMounts:
+        - name: podinfo
+          mountPath: /etc/podinfo
+      script: |
+        source $(workspaces.source.path)/.jx/variables.sh
+
+        export PIPELINE_NAME="$(cat /etc/podinfo/pipeline_name)"
+        export PIPELINE_URL="http://tekton-dashboard.$DOMAIN/#/namespaces/jx/pipelineruns/$PIPELINE_NAME"
+        if [[ -n "$PULL_PULL_SHA" ]]; then
+          export COMMIT="$PULL_PULL_SHA"
+        else
+          export COMMIT="$PULL_BASE_SHA"
+        fi
+
+        echo "export TEKTON_DAHBOARD_URL=\"$PIPELINE_URL\"" >> $(workspaces.source.path)/.jx/variables.sh
+        echo "export PIPELINE_NAME=$PIPELINE_NAME" >> $(workspaces.source.path)/.jx/variables.sh
+        echo "export HEAD_COMMIT=$COMMIT" >> $(workspaces.source.path)/.jx/variables.sh
+
+        cat $(workspaces.source.path)/.jx/variables.sh
+    - name: pi-if-aws-generate-docker-config
+      image: docker.io/amazon/aws-cli:2.0.52@sha256:1506cec98a7101c935176d440a14302ea528b8f92fcaf4a6f1ea2d7ecef7edc4
+      workingDir: $(workspaces.source.path)
+      script: |
+        source $(workspaces.source.path)/.jx/variables.sh
+        DOCKER_CONF_FILE=".docker-config.json"
+        if [ -n "AWS_ROLE_ARN" ]; then
+        AWS_TOKEN=$(aws ecr get-login-password)
+
+        cat <<EOF > $DOCKER_CONF_FILE
+        {"auths":{"$DOCKER_REGISTRY":{"username":"AWS","password":"${AWS_TOKEN}"}}}
+        EOF
+
+        fi

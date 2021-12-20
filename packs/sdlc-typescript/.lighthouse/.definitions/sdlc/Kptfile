@@ -1,0 +1,11 @@
+apiVersion: kpt.dev/v1alpha1
+kind: Kptfile
+metadata:
+  name: sdlc
+upstream:
+  type: git
+  git:
+    commit: d435b4b9d3cfa57db91db7e01991f50011ccf441
+    repo: https://github.com/vitech-team-sdlc/jx3-pipeline-catalog
+    directory: /tasks/sdlc
+    ref: master

@@ -1,0 +1,95 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: gradle-build
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.20.0"
+spec:
+  description: >-
+    Gradle Build + Docker sidecar for medium/integration tests
+  workspaces:
+    - name: source
+      description: sources dir
+  params:
+    - name: GRADLE_IMAGE
+      description: gradle image with jdk
+      type: string
+      default: "gradle:6.3.0-jdk11"
+    - name: GRADLE_JAVA_OPTIONS
+      default: "-Xms10m -Xmx256m"
+    - name: GRADLE_ARGS
+      description: gradle args
+      default: "--no-daemon clean build"
+  steps:
+    - name: gradle-build
+      image: $(params.GRADLE_IMAGE)
+      workingDir: $(workspaces.source.path)
+      resources:
+        limits:
+          memory: 2Gi
+        requests:
+          cpu: 500m
+          memory: 512Mi
+      script: |
+        if gradle $(params.GRADLE_ARGS) ; then
+          echo "passed" > .test.result
+        else
+          echo "failed" > .test.result
+        fi
+      env:
+        - name: _JAVA_OPTIONS
+          value: "$(params.GRADLE_JAVA_OPTIONS)"
+        - name: ARTIFACT_REGISTRY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: nexus
+              key: password
+        - name: ARTIFACT_REGISTRY_USER
+          value: "admin"
+        - name: ARTIFACT_REGISTRY_URL
+          value: "http://nexus/repository/maven-group/"
+      volumeMounts:
+        - mountPath: /var/run/
+          name: dind-socket
+    - name: gradle-publish-report
+      image: ghcr.io/vitech-team/sdlc-pipeline-helper:0.0.10
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        if [[ -n "$PULL_PULL_SHA" ]]; then
+          export COMMIT="$PULL_PULL_SHA"
+        else
+          export COMMIT="$PULL_BASE_SHA"
+        fi
+        sdlcpipelinehelper junit-report-publish \
+          --repoOwner="$(params.REPO_OWNER)"  --repoName="$(params.REPO_NAME)" \
+          --reportPaths="**/test-results/**/TEST-*.xml" --commit="$COMMIT"
+      env:
+        - name: GH_APP_ID
+          valueFrom:
+            secretKeyRef:
+              name: github-sdlc-app
+              key: appId
+        - name: GH_APP_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: github-sdlc-app
+              key: privateKey
+        - name: GH_APP_INSTALLATION_ID
+          valueFrom:
+            secretKeyRef:
+              name: github-sdlc-app
+              key: installId
+    - name: gradle-build-finalize
+      image: $(params.GRADLE_IMAGE)
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+
+        if [[ "$(cat .test.result)" == "passed" ]]; then
+          echo "Gradle build succesfully passed!"
+        else
+          echo "Something wrong with gradle build :("
+          exit 1
+        fi
+
