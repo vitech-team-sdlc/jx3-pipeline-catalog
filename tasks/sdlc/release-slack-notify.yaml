@@ -17,13 +17,12 @@ spec:
       description: slack token
   steps:
     - name: slack-notify
-      image: ghcr.io/jenkins-x/jx-cli:3.1.353
+      image: jenkinsxio/envsubst:0.0.1
       workingDir: $(workspaces.source.path)
       script: |
         #!/usr/bin/env bash
         source .jx/variables.sh
 
-        if [[ -n "$SLACK_TOKEN" ]]; then
         export ENVS_STR=$(cat promote.log | grep "Promoting app" | grep -Eo '(jx-).+')
         export PR_URLS_STR=$(cat promote.log | grep "Created Pull Request" | grep -Eo '(http|https).+')
         export REPO_TAG_URL="https://github.com/$(params.REPO_OWNER)/$(params.REPO_NAME)/tree/v${VERSION}"
@@ -50,31 +49,25 @@ spec:
 
         i=0
         for ENV in ${ENVS[*]}; do
+          export ENV=$ENV
           export PR_URL="${PR_URLS[i]}"
           i=$((i+1))
           echo "Sending to $ENV and URL: $PR_URL"
-
-        eval "cat <<EOF
+        cat > rpl.json.tmpl <<EOF
         $SLACK_MESSAGE_TMPL
         EOF
-        " >rpl.json
-
-          curl -X POST -H 'Content-type: application/json' -H "Authorization: Bearer $SLACK_TOKEN" --data "$(cat rpl.json)" https://slack.com/api/chat.postMessage
+          envsubst < rpl.json.tmpl > rpl.json
+          curl -X POST -H 'Content-type: application/json' -H "Authorization: Bearer $SLACK_TOKEN" --data @rpl.json https://slack.com/api/chat.postMessage
         done
-        else
-          echo "slack token is not set"
-        fi
       env:
         - name: SLACK_TOKEN
           valueFrom:
             secretKeyRef:
-              optional: true
               name: $(params.SLACK_SECRET)
               key: token
         - name: SLACK_CHANNEL
           valueFrom:
             secretKeyRef:
-              optional: true
               name: $(params.SLACK_SECRET)
               key: defaultRecipient
         - name: SLACK_MESSAGE_TMPL
