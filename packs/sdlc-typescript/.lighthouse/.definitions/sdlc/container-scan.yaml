@@ -79,7 +79,7 @@ spec:
         - name: $(params.TRIVY_CACHE_PVC)
           mountPath: /.trivycache/
     - name: trivy-publish-report
-      image: ghcr.io/vitech-team/sdlc-pipeline-helper:0.0.10
+      image: ghcr.io/vitech-team-sdlc/sdlc-pipeline-helper:0.0.14
       workingDir: $(workspaces.source.path)
       script: |
         #!/usr/bin/env bash
@@ -135,7 +135,7 @@ spec:
 
         echo "Continue..."
     - name: dockle-publish-report
-      image: ghcr.io/vitech-team/sdlc-pipeline-helper:0.0.10
+      image: ghcr.io/vitech-team-sdlc/sdlc-pipeline-helper:0.0.14
       workingDir: $(workspaces.source.path)
       script: |
         #!/usr/bin/env bash
