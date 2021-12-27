@@ -52,7 +52,7 @@ spec:
         - mountPath: /var/run/
           name: dind-socket
     - name: gradle-publish-report
-      image: ghcr.io/vitech-team/sdlc-pipeline-helper:0.0.10
+      image: ghcr.io/vitech-team-sdlc/sdlc-pipeline-helper:0.0.14
       workingDir: $(workspaces.source.path)
       script: |
         #!/usr/bin/env bash
@@ -62,6 +62,7 @@ spec:
           export COMMIT="$PULL_BASE_SHA"
         fi
         sdlcpipelinehelper junit-report-publish \
+          --checkName="JUnit" \
           --repoOwner="$(params.REPO_OWNER)"  --repoName="$(params.REPO_NAME)" \
           --reportPaths="**/test-results/**/TEST-*.xml" --commit="$COMMIT"
       env:
