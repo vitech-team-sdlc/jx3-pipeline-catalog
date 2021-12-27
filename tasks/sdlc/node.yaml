@@ -22,13 +22,110 @@ spec:
           optional: true
   steps:
     - image: $(params.NODE_VERSION)
-      name: build-npm-install
+      name: npm-ci
       workingDir: $(workspaces.source.path)
       script: |
         #!/bin/sh
         npm ci
     - image: $(params.NODE_VERSION)
-      name: build-npm-test
+      name: npm-lint
+      workingDir: $(workspaces.source.path)
       script: |
         #!/bin/sh
-        CI=true DISPLAY=:99 npm test
+        if CI=true DISPLAY=:99 npm run lint ; then
+          echo "passed" > .lint.result
+        else
+          echo "failed" > .lint.result
+        fi
+    - image: $(params.NODE_VERSION)
+      name: npm-test
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/bin/sh
+        if CI=true DISPLAY=:99 npm test ; then
+          echo "passed" > .test.result
+        else
+          echo "failed" > .test.result
+        fi
+
+    - name: npm-test-publish-report
+      image: ghcr.io/vitech-team-sdlc/sdlc-pipeline-helper:0.0.14
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        if [[ -n "$PULL_PULL_SHA" ]]; then
+          export COMMIT="$PULL_PULL_SHA"
+        else
+          export COMMIT="$PULL_BASE_SHA"
+        fi
+      
+        sdlcpipelinehelper junit-report-publish \
+          --checkName="npm test" \
+          --repoOwner="$(params.REPO_OWNER)"  --repoName="$(params.REPO_NAME)" \
+          --reportPaths="junit.xml" --commit="$COMMIT"
+      env:
+        - name: GH_APP_ID
+          valueFrom:
+            secretKeyRef:
+              name: github-sdlc-app
+              key: appId
+        - name: GH_APP_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: github-sdlc-app
+              key: privateKey
+        - name: GH_APP_INSTALLATION_ID
+          valueFrom:
+            secretKeyRef:
+              name: github-sdlc-app
+              key: installId
+
+    - name: eslint-publish-report
+      image: ghcr.io/vitech-team-sdlc/sdlc-pipeline-helper:0.0.14
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        if [[ -n "$PULL_PULL_SHA" ]]; then
+          export COMMIT="$PULL_PULL_SHA"
+        else
+          export COMMIT="$PULL_BASE_SHA"
+        fi
+      
+        sdlcpipelinehelper junit-report-publish \
+          --checkName="eslint" \
+          --repoOwner="$(params.REPO_OWNER)"  --repoName="$(params.REPO_NAME)" \
+          --reportPaths="eslint.xml" --commit="$COMMIT"
+      env:
+        - name: GH_APP_ID
+          valueFrom:
+            secretKeyRef:
+              name: github-sdlc-app
+              key: appId
+        - name: GH_APP_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: github-sdlc-app
+              key: privateKey
+        - name: GH_APP_INSTALLATION_ID
+          valueFrom:
+            secretKeyRef:
+              name: github-sdlc-app
+              key: installId
+    - name: npm-build-finalize
+      image: $(params.NODE_VERSION)
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        if [[ "$(cat .test.result)" == "passed" ]]; then
+          echo "Tests succesfully passed!"
+        else
+          echo "Something wrong with tests :("
+          exit 1
+        fi
+        
+        if [[ "$(cat .lint.result)" == "passed" ]]; then
+          echo "Tests succesfully passed!"
+        else
+          echo "Something wrong with linter :("
+          exit 1
+        fi
