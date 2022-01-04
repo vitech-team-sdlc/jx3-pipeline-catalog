@@ -106,6 +106,7 @@ spec:
         done
         
         echo -n "build" > "${ENV_DIR}/BP_NODE_RUN_SCRIPTS"
+        echo -n "17" > "${ENV_DIR}/BP_JVM_VERSION"
       volumeMounts:
         - name: layers-dir
           mountPath: /layers
