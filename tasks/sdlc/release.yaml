@@ -24,10 +24,6 @@ spec:
           name: jx-boot-job-env-vars
           optional: true
     name: ""
-    resources:
-      requests:
-        cpu: 400m
-        memory: 512Mi
     workingDir: $(workspaces.source.path)
   steps:
     - env:

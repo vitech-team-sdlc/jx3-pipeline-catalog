@@ -64,7 +64,7 @@ spec:
         create_dir_if_not_exist "$ODC_DATA_DIR"
         create_dir_if_not_exist "$ODC_CACHE_DIR"
 
-        if "$ODC_BIN_DIR"/dependency-check.sh --failOnCVSS "$CVSS" --scan ./ --format "ALL" --project "$(params.PROJECT_NAME)" --out "." $SUPPRESSION ; then
+        if "$ODC_BIN_DIR"/dependency-check.sh --failOnCVSS "$CVSS" --scan ./ --format "SARIF" --project "$(params.PROJECT_NAME)" --out "." $SUPPRESSION ; then
           echo "0" > $(results.odc-result.path)
         else
           echo "1" > $(results.odc-result.path)
@@ -90,6 +90,13 @@ spec:
           --detailsUrl="$TEKTON_DAHBOARD_URL" \
           --checkName="OWASP Dependency Check" \
           --checkConclusion="$CHECK_CONCLUSION"
+        
+        if [ "$(cat $(results.odc-result.path))" == "1" ]; then
+          echo "Dependensy-Check scanning completed. Vulnerabilities with CVSS >= $(params.ODC_CVSS) found."
+          exit 1
+        else
+          echo "Dependensy-Check scanning completed. Vulnerabilities with CVSS >= $(params.ODC_CVSS) not found."
+        fi
       env:
         - name: GH_APP_ID
           valueFrom:
@@ -106,13 +113,3 @@ spec:
             secretKeyRef:
               name: github-sdlc-app
               key: installId
-    - name: odc-finish
-      image: $(params.ODC_IMAGE)
-      workingDir: $(workspaces.source.path)
-      script: |
-        if [ "$(cat $(results.odc-result.path))" == "1" ]; then
-          echo "Dependensy-Check scanning completed. Vulnerabilities with CVSS >= $(params.ODC_CVSS) found."
-          exit 1
-        else
-          echo "Dependensy-Check scanning completed. Vulnerabilities with CVSS >= $(params.ODC_CVSS) not found."
-        fi
