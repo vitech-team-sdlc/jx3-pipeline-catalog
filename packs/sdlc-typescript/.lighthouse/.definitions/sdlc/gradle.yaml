@@ -14,22 +14,17 @@ spec:
     - name: GRADLE_IMAGE
       description: gradle image with jdk
       type: string
-      default: "gradle:6.3.0-jdk11"
+      default: "gradle:7.3-jdk17"
     - name: GRADLE_JAVA_OPTIONS
       default: "-Xms10m -Xmx256m"
     - name: GRADLE_ARGS
       description: gradle args
-      default: "--no-daemon clean build"
+      default: "clean build"
+    - name: "SDLC_PIPE_HELPER"
   steps:
     - name: gradle-build
       image: $(params.GRADLE_IMAGE)
       workingDir: $(workspaces.source.path)
-      resources:
-        limits:
-          memory: 2Gi
-        requests:
-          cpu: 500m
-          memory: 512Mi
       script: |
         if gradle $(params.GRADLE_ARGS) ; then
           echo "passed" > .test.result
@@ -52,7 +47,7 @@ spec:
         - mountPath: /var/run/
           name: dind-socket
     - name: gradle-publish-report
-      image: ghcr.io/vitech-team-sdlc/sdlc-pipeline-helper:0.0.14
+      image: "$(params.SDLC_PIPE_HELPER)"
       workingDir: $(workspaces.source.path)
       script: |
         #!/usr/bin/env bash
@@ -61,10 +56,18 @@ spec:
         else
           export COMMIT="$PULL_BASE_SHA"
         fi
+        
         sdlcpipelinehelper junit-report-publish \
           --checkName="JUnit" \
           --repoOwner="$(params.REPO_OWNER)"  --repoName="$(params.REPO_NAME)" \
           --reportPaths="**/test-results/**/TEST-*.xml" --commit="$COMMIT"
+        
+        if [[ "$(cat .test.result)" == "passed" ]]; then
+          echo "Gradle build succesfully passed!"
+        else
+          echo "Something wrong with gradle build :("
+          exit 1
+        fi
       env:
         - name: GH_APP_ID
           valueFrom:
@@ -81,16 +84,3 @@ spec:
             secretKeyRef:
               name: github-sdlc-app
               key: installId
-    - name: gradle-build-finalize
-      image: $(params.GRADLE_IMAGE)
-      workingDir: $(workspaces.source.path)
-      script: |
-        #!/usr/bin/env bash
-
-        if [[ "$(cat .test.result)" == "passed" ]]; then
-          echo "Gradle build succesfully passed!"
-        else
-          echo "Something wrong with gradle build :("
-          exit 1
-        fi
-

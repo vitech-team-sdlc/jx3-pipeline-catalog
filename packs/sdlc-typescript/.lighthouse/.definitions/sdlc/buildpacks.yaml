@@ -60,9 +60,8 @@ spec:
       workingDir: $(workspaces.source.path)
       script: |
         source $(workspaces.source.path)/.jx/variables.sh
-        export OUTPUT_IMAGE=$DOCKER_REGISTRY/$DOCKER_REGISTRY_ORG/$APP_NAME:$VERSION
-        echo -n "$OUTPUT_IMAGE" > .image_name
-        cat .image_name
+        echo -n "$DOCKER_REGISTRY/$DOCKER_REGISTRY_ORG/$APP_NAME:$VERSION" > .image_name
+        echo -n "$DOCKER_REGISTRY/$DOCKER_REGISTRY_ORG/$APP_NAME:$GIT_BRANCH_NAME_SAFE" > .image_name_branch
     - name: bp-prepare
       image: docker.io/library/bash:5.1.4@sha256:b208215a4655538be652b2769d82e576bc4d0a2bb132144c060efc5be8c3f5d6
       args:
@@ -106,6 +105,7 @@ spec:
         done
         
         echo -n "build" > "${ENV_DIR}/BP_NODE_RUN_SCRIPTS"
+        echo -n "17" > "${ENV_DIR}/BP_JVM_VERSION"
       volumeMounts:
         - name: layers-dir
           mountPath: /layers
@@ -129,20 +129,18 @@ spec:
         fi
 
         IMAGE="$(cat $(workspaces.source.path)/.image_name)"
+        BRANCH_IMAGE="$(cat $(workspaces.source.path)/.image_name_branch)"
 
         /cnb/lifecycle/creator \
         -app=/$(params.BP_COPY_FOLDER) \
         -cache-dir=/cache \
-        -cache-image=$(params.CACHE_IMAGE) \
         -uid=$(params.USER_ID) \
         -gid=$(params.GROUP_ID) \
         -layers=/layers \
         -platform=/platform \
         -report=/layers/report.toml \
         -process-type=$(params.PROCESS_TYPE) \
-        -skip-restore=$(params.SKIP_RESTORE) \
-        -previous-image=$IMAGE \
-        -run-image=$(params.RUN_IMAGE) $IMAGE
+        -tag="$BRANCH_IMAGE" $IMAGE
       env:
         - name: ARTIFACT_REGISTRY_PASSWORD
           valueFrom:
