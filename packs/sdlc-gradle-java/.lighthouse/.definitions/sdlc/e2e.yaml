@@ -1,0 +1,83 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: e2e
+spec:
+  results:
+    - name: e2e-result
+      description: result of e2e test execution
+  params:
+    - name: NODE_VERSION
+      default: "timbru31/node-chrome:14@sha256:f1efad07129d76024b4df793a25874ad4c76d11dfe375739506426cff024af4f"
+    - name: "SDLC_PIPE_HELPER"
+  workspaces:
+    - name: source
+      description: sources dir
+  stepTemplate:
+    name: ""
+    env:
+      - name: NPM_CONFIG_USERCONFIG
+        value: /tekton/home/npm/.npmrc
+      - name: HOME
+        value: /tekton/home
+  steps:
+    - name: e2e-run
+      image: $(params.NODE_VERSION)
+      workingDir: "$(workspaces.source.path)"
+      script: |
+        #!/usr/bin/env bash
+        source $(workspaces.source.path)/.jx/variables.sh
+
+        cd e2e
+
+        export COHORT_UI_URL="$PREVIEW_URL"
+        mkdir -p  "target"
+
+        if CI=true npm ci --unsafe-perm && npm run test:execute ; then
+          echo "0" > $(results.e2e-result.path)
+        else
+          echo "1" > $(results.e2e-result.path)
+          echo "FAILED -> REPORT"
+        fi
+    - name: e2e-report
+      image: $(params.SDLC_PIPE_HELPER)
+      workingDir: "$(workspaces.source.path)"
+      script: |
+        #!/usr/bin/env bash
+        source $(workspaces.source.path)/.jx/variables.sh
+        
+        if [ "$(cat $(results.e2e-result.path))" == "0" ]; then
+          export CHECK_CONCLUSION="success"
+        else
+          export CHECK_CONCLUSION="failure"
+        fi
+        
+        sdlcpipelinehelper cucumber-publish \
+          --repoOwner="$(params.REPO_OWNER)"  --repoName="$(params.REPO_NAME)" --commit="$HEAD_COMMIT" \
+          --detailsUrl="$TEKTON_DAHBOARD_URL" \
+          --reportPath="**/e2e/target/cucumber_report.json" \
+          --checkName="E2E: Cucumber Report" \
+          --checkConclusion="$CHECK_CONCLUSION"
+        
+        if [ "$(cat $(results.e2e-result.path))" == "1" ]; then
+          echo "E2E: report published and some issues have been found."
+          exit 1
+        else
+          echo "E2E: Executed successfully"
+        fi
+      env:
+        - name: GH_APP_ID
+          valueFrom:
+            secretKeyRef:
+              name: github-sdlc-app
+              key: appId
+        - name: GH_APP_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: github-sdlc-app
+              key: privateKey
+        - name: GH_APP_INSTALLATION_ID
+          valueFrom:
+            secretKeyRef:
+              name: github-sdlc-app
+              key: installId

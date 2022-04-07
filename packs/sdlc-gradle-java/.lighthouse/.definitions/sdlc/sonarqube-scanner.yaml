@@ -17,6 +17,7 @@ spec:
   workspaces:
     - name: source
   params:
+    - name: "SDLC_PIPE_HELPER"
     - name: SONAR_HOST_URL
       description: Host URL where the sonarqube server is running
       default: "https://sonarcloud.io"
@@ -27,9 +28,6 @@ spec:
     - name: SONAR_ORGANIZATION
       description: Sonar organization
       default: ""
-    - name: SONAR_PR_BRANCH
-      description: Project's unique key
-      default: ".source_branch"
     - name: SONAR_PR_BASE
       description: Project's unique key
     - name: SONAR_PR_KEY
@@ -65,6 +63,8 @@ spec:
               key: sonar-scm-provider
       script: |
         #!/usr/bin/env bash
+        source $(workspaces.source.path)/.jx/variables.sh
+
         replaceValues() {
           filename=$1
           thekey=$2
@@ -109,7 +109,7 @@ spec:
               fi
           fi
 
-          SONAR_PR_BRANCH="$(cat $(params.SONAR_PR_BRANCH))"
+          SONAR_PR_BRANCH="$GIT_BRANCH_NAME"
 
           if [[ -n "$SONAR_PR_BRANCH" ]]; then
             replaceValues $(workspaces.source.path)/sonar-project.properties sonar.qualitygate.wait "true"
@@ -140,7 +140,7 @@ spec:
               name: $(params.SONAR_SECRET)
               key: sonar-login
     - name: sonar-publish-check
-      image: ghcr.io/vitech-team/sdlc-pipeline-helper:0.0.11
+      image: $(params.SDLC_PIPE_HELPER)
       workingDir: $(workspaces.source.path)
       script: |
         #!/usr/bin/env bash
