@@ -16,8 +16,9 @@ spec:
       description: sources dir
   params:
     - name: PROJECT_NAME
+    - name: SDLC_PIPE_HELPER
     - name: ODC_IMAGE
-      default: owasp/dependency-check:6.5.1
+      default: owasp/dependency-check:7.0.4
     - name: ODC_CACHE_PVC
       default: odc-cache
     - name: ODC_CVSS
@@ -72,7 +73,7 @@ spec:
         - name: $(params.ODC_CACHE_PVC)
           mountPath: /usr/share/dependency-check/data
     - name: owasp-publish-report
-      image: ghcr.io/vitech-team-sdlc/sdlc-pipeline-helper:0.0.14
+      image: "$(params.SDLC_PIPE_HELPER)"
       workingDir: $(workspaces.source.path)
       script: |
         #!/usr/bin/env bash

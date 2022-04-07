@@ -6,9 +6,9 @@ metadata:
 spec:
   params:
     - name: JX_BOOT
-      value: "ghcr.io/jenkins-x/jx-boot:3.2.211"
+      value: "ghcr.io/jenkins-x/jx-boot:3.2.292"
     - name: JX_PREVIEW
-      value: "ghcr.io/jenkins-x-plugins/jx-preview:0.0.192"
+      value: "ghcr.io/jenkins-x-plugins/jx-preview:0.0.198"
     - name: ODC_CVSS
       value: "9"
     - name: TRIVY_SEVERITY
@@ -61,8 +61,8 @@ spec:
             name: ""
             resources:
               requests:
-                cpu: 400m
-                memory: 512Mi
+                cpu: 10m
+                memory: 32Mi
           steps:
             - image: uses:.lighthouse/.definitions/sdlc/git-clone-pr.yaml
               name: ""

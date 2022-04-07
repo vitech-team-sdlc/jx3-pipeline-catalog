@@ -29,9 +29,10 @@ spec:
     - name: CC_LINTER_IMAGE
       type: string
       description: image who scanning commits
-      default: "aevea/commitsar:0.16.0"
+      default: "aevea/commitsar:0.18.0"
     - name: JX_BOOT
       type: string
+    - name: "SDLC_PIPE_HELPER"
   results:
     - name: passed
       description: "conventional commits passed: true/false"
@@ -63,7 +64,7 @@ spec:
         - name: RESULTS_MARKDOWN_REPORT_PATH
           value: .conv-commits-markdown.report
     - name: cc-publish-check
-      image: ghcr.io/vitech-team/sdlc-pipeline-helper:0.0.11
+      image: $(params.SDLC_PIPE_HELPER)
       workingDir: $(workspaces.source.path)
       script: |
         #!/usr/bin/env bash

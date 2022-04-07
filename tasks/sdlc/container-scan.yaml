@@ -14,13 +14,13 @@ spec:
       description: Flag indicating that a scan should be performed
       default: "true"
     - name: TRIVY_IMAGE
-      default: "aquasec/trivy:0.20.0"
+      default: "aquasec/trivy:0.25.3"
     - name: TRIVY_CACHE_PVC
       default: "trivy-cache"
     - name: TRIVY_SEVERITY
       default: "CRITICAL"
     - name: DOCKLE_IMAGE
-      default: "goodwithtech/dockle:v0.4.3"
+      default: "goodwithtech/dockle:v0.4.5"
     - name: DOCKLE_EXIT_LEVEL
       type: "string"
       default: "warn"
@@ -28,6 +28,7 @@ spec:
       type: string
       description: "Name of docker-socket volume to mount: /var/run/docker.sock"
       default: "dind-socket"
+    - name: "SDLC_PIPE_HELPER"
   stepTemplate:
     name: ""
     volumeMounts:
@@ -68,7 +69,7 @@ spec:
           exit 0
         fi
 
-        if trivy --cache-dir="/.trivycache/" image --ignore-unfixed="true" --no-progress --exit-code 0 --timeout 30m --severity "$(params.TRIVY_SEVERITY)" --format template --template "@.trivy.sarif.tpl" -o ".trivy-report.sarif" "$MINK_IMAGE" ; then
+        if trivy --cache-dir="/.trivycache/" image --ignore-unfixed="true" --no-progress --exit-code 0 --timeout 30m --severity "$(params.TRIVY_SEVERITY)" --format sarif -o ".trivy-report.sarif" "$MINK_IMAGE" ; then
           echo "0" > $(results.trivy-result.path)
         else
           echo "1" > $(results.trivy-result.path)
@@ -79,11 +80,10 @@ spec:
         - name: $(params.TRIVY_CACHE_PVC)
           mountPath: /.trivycache/
     - name: trivy-publish-report
-      image: ghcr.io/vitech-team-sdlc/sdlc-pipeline-helper:0.0.14
+      image: $(params.SDLC_PIPE_HELPER)
       workingDir: $(workspaces.source.path)
       script: |
         #!/usr/bin/env bash
-
         source $(workspaces.source.path)/.jx/variables.sh
 
         if [ "$(cat $(results.trivy-result.path))" == "0" ]; then
@@ -97,6 +97,13 @@ spec:
           --detailsUrl="$TEKTON_DAHBOARD_URL" \
           --checkName="Trivy Container Check" \
           --checkConclusion="$CHECK_CONCLUSION"
+        
+        if [ "$(cat $(results.trivy-result.path))" == "1" ]; then
+          echo "Trivy scanning completed. $(params.TRIVY_SEVERITY) Vulnerabilities found."
+          exit 1
+        else
+          echo "Trivy scanning completed. $(params.TRIVY_SEVERITY) vulnerabilities not found."
+        fi
 
         rm .trivy-report.sarif
       env:
@@ -135,7 +142,7 @@ spec:
 
         echo "Continue..."
     - name: dockle-publish-report
-      image: ghcr.io/vitech-team-sdlc/sdlc-pipeline-helper:0.0.14
+      image: $(params.SDLC_PIPE_HELPER)
       workingDir: $(workspaces.source.path)
       script: |
         #!/usr/bin/env bash
@@ -154,6 +161,13 @@ spec:
           --checkConclusion="$CHECK_CONCLUSION"
 
         rm .dockle-report.sarif
+        
+        if [ "$(cat $(results.dockle-result.path))" == "1" ]; then
+          echo "Dockle scanning completed. $(params.DOCKLE_EXIT_LEVEL) Vulnerabilities found."
+          exit 1
+        else
+          echo "Dockle scanning completed. $(params.DOCKLE_EXIT_LEVEL) vulnerabilities not found."
+        fi
       env:
         - name: GH_APP_ID
           valueFrom:
@@ -170,20 +184,3 @@ spec:
             secretKeyRef:
               name: github-sdlc-app
               key: installId
-    - name: cs-finish
-      image: $(params.DOCKLE_IMAGE)
-      workingDir: $(workspaces.source.path)
-      script: |
-        if [ "$(cat $(results.dockle-result.path))" == "1" ]; then
-          echo "Dockle scanning completed. $(params.DOCKLE_EXIT_LEVEL) Vulnerabilities found."
-          exit 1
-        else
-          echo "Dockle scanning completed. $(params.DOCKLE_EXIT_LEVEL) vulnerabilities not found."
-        fi
-
-        if [ "$(cat $(results.trivy-result.path))" == "1" ]; then
-          echo "Trivy scanning completed. $(params.TRIVY_SEVERITY) Vulnerabilities found."
-          exit 1
-        else
-          echo "Trivy scanning completed. $(params.TRIVY_SEVERITY) vulnerabilities not found."
-        fi

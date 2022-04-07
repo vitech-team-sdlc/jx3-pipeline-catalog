@@ -5,15 +5,15 @@ metadata:
 spec:
   params:
     - name: JX_BOOT
-      value: "ghcr.io/jenkins-x/jx-boot:3.2.211"
+      value: "ghcr.io/jenkins-x/jx-boot:3.2.292"
     - name: JX_RELEASE
-      value: "ghcr.io/jenkins-x/jx-release-version:2.5.0"
+      value: "ghcr.io/jenkins-x/jx-release-version:2.5.1"
     - name: JX_REGISTRY
       value: "ghcr.io/jenkins-x/jx-registry:0.1.1"
     - name: JX_CHANGELOG
-      value: "ghcr.io/jenkins-x/jx-changelog:0.0.47"
+      value: "ghcr.io/jenkins-x/jx-changelog:0.1.3"
     - name: JX_PROMOTE
-      value: "ghcr.io/jenkins-x-plugins/jx-promote:0.1.0"
+      value: "ghcr.io/jenkins-x-plugins/jx-promote:0.2.5"
     - name: BP_BUILDER_IMAGE
       value: "paketobuildpacks/builder:base"
     - name: SLACK_CHANNEL
@@ -55,8 +55,8 @@ spec:
             name: ""
             resources:
               requests:
-                cpu: 400m
-                memory: 512Mi
+                cpu: 10m
+                memory: 32Mi
             env:
               - name: GIT_TOKEN
                 valueFrom:

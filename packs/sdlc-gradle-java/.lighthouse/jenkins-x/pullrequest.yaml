@@ -5,9 +5,11 @@ metadata:
 spec:
   params:
     - name: JX_BOOT
-      value: "ghcr.io/jenkins-x/jx-boot:3.2.211"
+      value: "ghcr.io/jenkins-x/jx-boot:3.2.292"
     - name: JX_PREVIEW
-      value: "ghcr.io/jenkins-x-plugins/jx-preview:0.0.192"
+      value: "ghcr.io/jenkins-x-plugins/jx-preview:0.0.198"
+    - name: SDLC_PIPE_HELPER
+      value: "$(params.SDLC_PIPE_HELPER)"
     - name: ODC_CVSS
       value: "9"
     - name: TRIVY_SEVERITY
@@ -19,7 +21,9 @@ spec:
     - name: BP_BUILDER_IMAGE
       value: "paketobuildpacks/builder:base"
     - name: GRADLE_ARGS
-      value: "--no-daemon clean build integrationTest"
+      value: "clean build"
+    - name: JX_PREVIEW
+      value: "ghcr.io/jenkins-x-plugins/jx-preview:0.0.198"
   pipelineSpec:
     workspaces:
       - name: source
@@ -29,17 +33,17 @@ spec:
       - name: pullrequest
         params:
           - name: JX_BOOT
-            value: "ghcr.io/jenkins-x/jx-boot:3.2.197"
+            value: "$(params.JX_BOOT)"
           - name: JX_PREVIEW
-            value: "ghcr.io/jenkins-x-plugins/jx-preview:0.0.192"
+            value: "$(params.JX_PREVIEW)"
           - name: ODC_CVSS
-            value: "9"
+            value: "$(params.ODC_CVSS)"
           - name: TRIVY_SEVERITY
-            value: "CRITICAL"
+            value: "$(params.TRIVY_SEVERITY)"
           - name: DOCKLE_EXIT_LEVEL
-            value: "fatal"
+            value: "$(params.DOCKLE_EXIT_LEVEL)"
           - name: PREVIEW_ENABLED
-            value: "false"
+            value: "$(params.PREVIEW_ENABLED)"
           - name: PROJECT_NAME
             value: "$(params.REPO_NAME)"
           - name: SONAR_PROJECT_NAME
@@ -54,6 +58,8 @@ spec:
             value: "$(params.PULL_BASE_REF)"
           - name: GRADLE_ARGS
             value: "$(params.GRADLE_ARGS)"
+          - name: SDLC_PIPE_HELPER
+            value: "$(params.SDLC_PIPE_HELPER)"
         workspaces:
           - name: source
             workspace: source
@@ -63,8 +69,8 @@ spec:
             name: ""
             resources:
               requests:
-                cpu: 400m
-                memory: 512Mi
+                cpu: 10m
+                memory: 32Mi
             env:
               - name: GIT_TOKEN
                 valueFrom:
@@ -77,7 +83,7 @@ spec:
                     key: username
                     name: tekton-git
           sidecars:
-            - image: docker:19.03.15-dind
+            - image: docker:20.10.13-dind
               name: server
               args:
                 - --storage-driver=vfs
@@ -97,7 +103,7 @@ spec:
                   name: dind-certs
               resources:
                 limits:
-                  memory: 3Gi
+                  memory: 2Gi
                 requests:
                   cpu: 100m
                   memory: 1Gi
