@@ -21,7 +21,7 @@ spec:
     - name: GRADLE_ARGS
       value: "clean build"
     - name: SDLC_PIPE_HELPER
-      value: "$(params.SDLC_PIPE_HELPER)"
+      value: "ghcr.io/vitech-team-sdlc/sdlc-pipeline-helper:0.0.16"
   pipelineSpec:
     workspaces:
       - name: source
@@ -54,6 +54,8 @@ spec:
             value: "$(params.PULL_BASE_REF)"
           - name: SLACK_CHANNEL
             value: "$(params.SLACK_CHANNEL)"
+          - name: SDLC_PIPE_HELPER
+            value: "$(params.SDLC_PIPE_HELPER)"
         workspaces:
           - name: source
             workspace: source

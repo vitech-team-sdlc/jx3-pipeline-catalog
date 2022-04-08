@@ -9,7 +9,7 @@ spec:
     - name: JX_PREVIEW
       value: "ghcr.io/jenkins-x-plugins/jx-preview:0.0.198"
     - name: SDLC_PIPE_HELPER
-      value: "$(params.SDLC_PIPE_HELPER)"
+      value: "ghcr.io/vitech-team-sdlc/sdlc-pipeline-helper:0.0.16"
     - name: ODC_CVSS
       value: "9"
     - name: TRIVY_SEVERITY
