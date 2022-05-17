@@ -5,11 +5,9 @@ metadata:
 spec:
   params:
     - name: JX_BOOT
-      value: "ghcr.io/jenkins-x/jx-boot:3.2.292"
+      value: "ghcr.io/jenkins-x/jx-boot:3.2.336"
     - name: JX_PREVIEW
-      value: "ghcr.io/jenkins-x-plugins/jx-preview:0.0.198"
-    - name: SDLC_PIPE_HELPER
-      value: "ghcr.io/vitech-team-sdlc/sdlc-pipeline-helper:0.0.16"
+      value: "ghcr.io/jenkins-x-plugins/jx-preview:0.0.206"
     - name: ODC_CVSS
       value: "9"
     - name: TRIVY_SEVERITY
@@ -19,11 +17,19 @@ spec:
     - name: PREVIEW_ENABLED
       value: "false"
     - name: BP_BUILDER_IMAGE
-      value: "paketobuildpacks/builder:base"
+      value: "paketobuildpacks/builder:0.1.238-base"
     - name: GRADLE_ARGS
       value: "clean build"
-    - name: JX_PREVIEW
-      value: "ghcr.io/jenkins-x-plugins/jx-preview:0.0.198"
+    - name: SDLC_PIPE_HELPER
+      value: "ghcr.io/vitech-team-sdlc/sdlc-pipeline-helper:0.0.18"
+    - name: PULL_BASE_REF
+      value: ""
+    - name: PULL_NUMBER
+      value: ""
+    - name: REPO_NAME
+      value: ""
+    - name: REPO_OWNER
+      value: ""
   pipelineSpec:
     workspaces:
       - name: source
@@ -67,10 +73,7 @@ spec:
           stepTemplate:
             image: uses:jenkins-x/jx3-pipeline-catalog/tasks/gradle/pullrequest.yaml@versionStream
             name: ""
-            resources:
-              requests:
-                cpu: 10m
-                memory: 32Mi
+            resources: { }
             env:
               - name: GIT_TOKEN
                 valueFrom:
@@ -83,12 +86,11 @@ spec:
                     key: username
                     name: tekton-git
           sidecars:
-            - image: docker:20.10.13-dind
+            - image: docker:19.03.15-dind
               name: server
               args:
                 - --storage-driver=vfs
                 - --userland-proxy=false
-                - --debug
               securityContext:
                 privileged: true
               env:
@@ -130,6 +132,8 @@ spec:
             - image: uses:.lighthouse/.definitions/sdlc/container-scan.yaml
               name: ""
             - image: uses:.lighthouse/.definitions/sdlc/owasp-dependencies-check.yaml
+              name: ""
+            - image: uses:.lighthouse/.definitions/sdlc/check-steps.yaml
               name: ""
             - image: uses:.lighthouse/.definitions/sdlc/preview.yaml
               name: ""

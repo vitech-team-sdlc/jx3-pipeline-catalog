@@ -24,6 +24,7 @@ spec:
     - name: e2e-run
       image: $(params.NODE_VERSION)
       workingDir: "$(workspaces.source.path)"
+      onError: continue
       script: |
         #!/usr/bin/env bash
         source $(workspaces.source.path)/.jx/variables.sh
@@ -32,13 +33,8 @@ spec:
 
         export COHORT_UI_URL="$PREVIEW_URL"
         mkdir -p  "target"
-
-        if CI=true npm ci --unsafe-perm && npm run test:execute ; then
-          echo "0" > $(results.e2e-result.path)
-        else
-          echo "1" > $(results.e2e-result.path)
-          echo "FAILED -> REPORT"
-        fi
+        
+        CI=true npm ci --unsafe-perm && npm run test:execute
     - name: e2e-report
       image: $(params.SDLC_PIPE_HELPER)
       workingDir: "$(workspaces.source.path)"
@@ -46,25 +42,12 @@ spec:
         #!/usr/bin/env bash
         source $(workspaces.source.path)/.jx/variables.sh
         
-        if [ "$(cat $(results.e2e-result.path))" == "0" ]; then
-          export CHECK_CONCLUSION="success"
-        else
-          export CHECK_CONCLUSION="failure"
-        fi
-        
         sdlcpipelinehelper cucumber-publish \
           --repoOwner="$(params.REPO_OWNER)"  --repoName="$(params.REPO_NAME)" --commit="$HEAD_COMMIT" \
           --detailsUrl="$TEKTON_DAHBOARD_URL" \
           --reportPath="**/e2e/target/cucumber_report.json" \
           --checkName="E2E: Cucumber Report" \
-          --checkConclusion="$CHECK_CONCLUSION"
-        
-        if [ "$(cat $(results.e2e-result.path))" == "1" ]; then
-          echo "E2E: report published and some issues have been found."
-          exit 1
-        else
-          echo "E2E: Executed successfully"
-        fi
+          --checkConclusion="$(cat $(steps.step-e2e-run.exitCode.path))"
       env:
         - name: GH_APP_ID
           valueFrom:

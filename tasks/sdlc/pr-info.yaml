@@ -78,7 +78,11 @@ spec:
           echo "export GIT_BRANCH_NAME=master" >> $(workspaces.source.path)/.jx/variables.sh
         fi
 
-        SALO_BRANCH_NAME=$(cat .source_branch)
+        if [[ -n "${PULL_NUMBER}" ]]; then
+          export SALO_BRANCH_NAME=$(cat .source_branch)
+        else
+          export SALO_BRANCH_NAME=$PULL_BASE_REF
+        fi
         GIT_BRANCH_NAME_SAFE=${SALO_BRANCH_NAME//[\/]/_}
         echo "export GIT_BRANCH_NAME_SAFE=$GIT_BRANCH_NAME_SAFE" >> $(workspaces.source.path)/.jx/variables.sh
 

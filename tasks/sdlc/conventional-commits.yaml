@@ -40,54 +40,48 @@ spec:
     - name: cc-check
       image: $(params.CC_LINTER_IMAGE)
       workingDir: $(workspaces.source.path)
+      onError: continue
       env:
         - name: RESULTS_REPORT_PATH
           value: .conv-commits-report.json
-        - name: MARDOWN_HEADER
-          value: "[Conventional Commits](https://www.conventionalcommits.org): **Check Failed** :angry:"
-        - name: RESULTS_MARKDOWN_REPORT_PATH
-          value: .conv-commits-markdown.report
       script: |
-        commitsar -v
-
-        if commitsar > "$RESULTS_REPORT_PATH"; then
-          echo -n "true" > $(results.passed.path)
-        else
-          echo -n "false" > $(results.passed.path)
-        fi
         
-        echo "=== Building mardown"
-        export COLUMNS=$(cat $RESULTS_REPORT_PATH | grep "|" | awk -F"|" '{printf "%s | %s | %s", $2, $3, $4;} {print ""}' | grep -v -e '^[[:space:]]*$' | tail -n +2 | grep '[[:alnum:]]')
-        echo -e "$MARDOWN_HEADER \n \n HASH | ERROR | MSG \n --|--|-- \n $COLUMNS" > "$RESULTS_MARKDOWN_REPORT_PATH"
+        commitsar > "$(workspaces.source.path)/$RESULTS_REPORT_PATH"
     - name: cc-publish-check
       image: $(params.SDLC_PIPE_HELPER)
       workingDir: $(workspaces.source.path)
       script: |
         #!/usr/bin/env bash
         source $(workspaces.source.path)/.jx/variables.sh
-
-        export CHECK_CONCLUSION="success"
+        
+        echo "=== Building mardown"
+        export MARDOWN_HEADER="[Conventional Commits](https://www.conventionalcommits.org): **Check Failed** :angry:"
+        export COLUMNS=$(cat $RESULTS_REPORT_PATH | grep "|" | awk -F"|" '{printf "%s | %s | %s", $2, $3, $4;} {print ""}' | grep -v -e '^[[:space:]]*$' | tail -n +2 | grep '[[:alnum:]]')
+        echo -e "$MARDOWN_HEADER \n \n HASH | ERROR | MSG \n --|--|-- \n $COLUMNS" > "$RESULTS_MARKDOWN_REPORT_PATH"
+        
         export CHECK_SUMMARY="No issues found"
-
-        if ! "$(cat $(results.passed.path))" ; then
-          export CHECK_CONCLUSION="failure"
+        export CHECK_STATUS="No issues found"
+        if [ "$(cat $(steps.step-cc-check.exitCode.path))" = "1" ]; then
           export CHECK_SUMMARY="$(cat $RESULTS_MARKDOWN_REPORT_PATH)"
+          export CHECK_STATUS="Some issues have been found"
         fi
 
         sdlcpipelinehelper check-publish \
          --repoOwner="$(params.REPO_OWNER)"  --repoName="$(params.REPO_NAME)" --commit="$HEAD_COMMIT" \
          --detailsUrl="$TEKTON_DAHBOARD_URL" \
          --checkName="Conventional Commits" \
-         --checkConclusion="$CHECK_CONCLUSION" \
+         --checkConclusion="$(cat $(steps.step-cc-check.exitCode.path))" \
          --summary="$CHECK_SUMMARY" \
-         --title="Status: $CHECK_CONCLUSION"
+         --title="$CHECK_STATUS"
         
         if "$(params.CC_FAIL)" ; then
-          if ! "$(cat $(results.passed.path))" ; then
+          if [ "$(cat $(steps.step-cc-check.exitCode.path))" = "1" ]; then
             exit 1
           fi
         fi
       env:
+        - name: RESULTS_REPORT_PATH
+          value: .conv-commits-report.json
         - name: RESULTS_MARKDOWN_REPORT_PATH
           value: .conv-commits-markdown.report
         - name: GH_APP_ID

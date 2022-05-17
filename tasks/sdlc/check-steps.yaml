@@ -1,0 +1,25 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: finalize
+  annotations:
+    tekton.dev/pipelines.minVersion: 0.12.1
+    tekton.dev/displayName: finalize
+spec:
+  workspaces:
+    - name: source
+      description: sources dir
+  steps:
+    - image: bitnami/kubectl:1.22.9
+      name: task-run-manifest
+      script: |
+        echo "loading taskRun: $(context.taskRun.name)"
+        kubectl get tr $(context.taskRun.name) -o yaml > $(workspaces.source.path)/tr.yaml
+    - name: check-steps
+      image: mikefarah/yq:4.25.1
+      script: |
+        export EXIT_1_STEPS="$(yq '.status.steps[] | select(.terminated.exitCode==1) | .name' $(workspaces.source.path)/tr.yaml | xargs)"
+        if [ "${EXIT_1_STEPS}" != "" ]; then
+          echo "$(context.taskRun.name) some errors found in steps: $EXIT_1_STEPS"
+          exit 1
+        fi
