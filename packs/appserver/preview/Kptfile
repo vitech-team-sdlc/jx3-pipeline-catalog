@@ -5,7 +5,7 @@ metadata:
 upstream:
   type: git
   git:
-    commit: b52b35506a05e046d54615c3ade97f3aef8bfb08
+    commit: e4196a65002cdf8ae69e9a3c35919e74cc55ae45
     repo: https://github.com/vitech-team-sdlc/jx3-pipeline-catalog
     directory: /helm/preview
     ref: master
