@@ -5,18 +5,28 @@ metadata:
 spec:
   params:
     - name: JX_BOOT
-      value: "ghcr.io/jenkins-x/jx-boot:3.2.292"
+      value: "ghcr.io/jenkins-x/jx-boot:3.2.336"
     - name: JX_RELEASE
       value: "ghcr.io/jenkins-x/jx-release-version:2.5.1"
     - name: JX_REGISTRY
       value: "ghcr.io/jenkins-x/jx-registry:0.1.1"
     - name: JX_CHANGELOG
-      value: "ghcr.io/jenkins-x/jx-changelog:0.1.3"
+      value: "ghcr.io/jenkins-x/jx-changelog:0.1.4"
     - name: JX_PROMOTE
-      value: "ghcr.io/jenkins-x-plugins/jx-promote:0.2.5"
+      value: "ghcr.io/jenkins-x-plugins/jx-promote:0.2.9"
     - name: BP_BUILDER_IMAGE
       value: "paketobuildpacks/builder:base"
+    - name: SDLC_PIPE_HELPER
+      value: "ghcr.io/vitech-team-sdlc/sdlc-pipeline-helper:0.0.18"
     - name: SLACK_CHANNEL
+      value: ""
+    - name: PULL_BASE_REF
+      value: ""
+    - name: PULL_NUMBER
+      value: ""
+    - name: REPO_NAME
+      value: ""
+    - name: REPO_OWNER
       value: ""
   pipelineSpec:
     workspaces:
@@ -37,7 +47,7 @@ spec:
           - name: JX_PROMOTE
             value: "$(params.JX_PROMOTE)"
           - name: BP_BUILDER_IMAGE
-            value: "paketobuildpacks/builder:base"
+            value: "$(params.BP_BUILDER_IMAGE)"
           - name: SONAR_PROJECT_NAME
             value: "$(params.REPO_NAME)"
           - name: SONAR_PROJECT_KEY
@@ -46,6 +56,8 @@ spec:
             value: "$(params.PULL_BASE_REF)"
           - name: SLACK_CHANNEL
             value: "$(params.SLACK_CHANNEL)"
+          - name: SDLC_PIPE_HELPER
+            value: "$(params.SDLC_PIPE_HELPER)"
         workspaces:
           - name: source
             workspace: source
@@ -53,10 +65,7 @@ spec:
           stepTemplate:
             image: uses:.lighthouse/.definitions/sdlc/release.yaml
             name: ""
-            resources:
-              requests:
-                cpu: 10m
-                memory: 32Mi
+            resources: { }
             env:
               - name: GIT_TOKEN
                 valueFrom:
@@ -81,6 +90,8 @@ spec:
             - image: uses:.lighthouse/.definitions/sdlc/sonarqube-scanner.yaml
               name: ""
             - image: uses:.lighthouse/.definitions/sdlc/buildpacks.yaml
+              name: ""
+            - image: uses:.lighthouse/.definitions/sdlc/check-steps.yaml
               name: ""
             - name: promote-changelog
             - name: promote-helm-release

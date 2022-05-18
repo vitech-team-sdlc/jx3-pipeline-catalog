@@ -6,9 +6,9 @@ metadata:
 spec:
   params:
     - name: JX_BOOT
-      value: "ghcr.io/jenkins-x/jx-boot:3.2.292"
+      value: "ghcr.io/jenkins-x/jx-boot:3.2.336"
     - name: JX_PREVIEW
-      value: "ghcr.io/jenkins-x-plugins/jx-preview:0.0.198"
+      value: "ghcr.io/jenkins-x-plugins/jx-preview:0.0.206"
     - name: ODC_CVSS
       value: "9"
     - name: TRIVY_SEVERITY
@@ -19,6 +19,8 @@ spec:
       value: "false"
     - name: BP_BUILDER_IMAGE
       value: "paketobuildpacks/builder:base"
+    - name: SDLC_PIPE_HELPER
+      value: "ghcr.io/vitech-team-sdlc/sdlc-pipeline-helper:0.0.18"
   pipelineSpec:
     workspaces:
       - name: source
@@ -51,6 +53,8 @@ spec:
             value: "$(params.PULL_NUMBER)"
           - name: SONAR_PR_BASE
             value: "$(params.PULL_BASE_REF)"
+          - name: SDLC_PIPE_HELPER
+            value: "$(params.SDLC_PIPE_HELPER)"
         workspaces:
           - name: source
             workspace: source
@@ -59,10 +63,7 @@ spec:
           stepTemplate:
             image: uses:jenkins-x/jx3-pipeline-catalog/tasks/typescript/pullrequest.yaml@versionStream
             name: ""
-            resources:
-              requests:
-                cpu: 10m
-                memory: 32Mi
+            resources: { }
           steps:
             - image: uses:.lighthouse/.definitions/sdlc/git-clone-pr.yaml
               name: ""
@@ -91,6 +92,8 @@ spec:
             - image: uses:.lighthouse/.definitions/sdlc/container-scan.yaml
               name: ""
             - image: uses:.lighthouse/.definitions/sdlc/owasp-dependencies-check.yaml
+              name: ""
+            - image: uses:.lighthouse/.definitions/sdlc/check-steps.yaml
               name: ""
             - image: uses:.lighthouse/.definitions/sdlc/preview.yaml
               name: ""

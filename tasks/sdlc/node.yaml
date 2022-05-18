@@ -12,6 +12,9 @@ spec:
       description: sources dir
   stepTemplate:
     name: ""
+    volumeMounts:
+      - mountPath: /tekton/home/npm
+        name: npmrc
     env:
       - name: NPM_CONFIG_USERCONFIG
         value: /tekton/home/npm/.npmrc
@@ -21,6 +24,11 @@ spec:
       - secretRef:
           name: jx-boot-job-env-vars
           optional: true
+  volumes:
+    - name: npmrc
+      secret:
+        optional: true
+        secretName: npmrc
   steps:
     - image: $(params.NODE_VERSION)
       name: npm-ci-lint
