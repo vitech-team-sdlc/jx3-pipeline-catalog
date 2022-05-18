@@ -111,7 +111,7 @@ spec:
 
           SONAR_PR_BRANCH="$GIT_BRANCH_NAME"
 
-          if [[ -n "$SONAR_PR_BRANCH" ]]; then
+          if [[ -n "$(params.SONAR_PR_KEY)" ]]; then
             replaceValues $(workspaces.source.path)/sonar-project.properties sonar.qualitygate.wait "true"
             replaceValues $(workspaces.source.path)/sonar-project.properties sonar.pullrequest.branch "$SONAR_PR_BRANCH"
             replaceValues $(workspaces.source.path)/sonar-project.properties sonar.pullrequest.base $(params.SONAR_PR_BASE)
@@ -129,10 +129,9 @@ spec:
     - name: sonar-scan
       image: $(params.SONAR_IMAGE)
       workingDir: $(workspaces.source.path)
+      onError: continue
       script: |
-        sonar-scanner -Dsonar.login=${SONAR_TOKEN} >.sonar 2>&1  | echo "sonar failed"
-        cat .sonar
-        rm -rf .scannerwork
+        sonar-scanner -Dsonar.login=${SONAR_TOKEN}
       env:
         - name: SONAR_TOKEN
           valueFrom:
@@ -145,38 +144,21 @@ spec:
       script: |
         #!/usr/bin/env bash
         source $(workspaces.source.path)/.jx/variables.sh
-
-        if [[ -n "$(params.SONAR_PR_KEY)" ]]; then
-          export FAILED="$(cat .sonar | grep 'QUALITY GATE STATUS' | grep 'PASSED')"
-        else
-          export FAILED=$(cat .sonar | grep 'ANALYSIS SUCCESSFUL')
-        fi
-
-        if [[ -z "$FAILED" ]]; then
-          export CHECK_CONCLUSION="failure"
-        else
+        
+        
+        export CHECK_CONCLUSION="failure"
+        if [[ "$(cat $(steps.step-sonar-scan.exitCode.path))" == "0" ]]; then
           export CHECK_CONCLUSION="success"
         fi
 
         if [[ -n "$(params.SONAR_PR_KEY)" ]]; then
-          cat .sonar | grep "QUALITY GATE STATUS" | grep -Eo '(http|https).+' > .status_link
           sdlcpipelinehelper check-publish \
             --repoOwner="$(params.REPO_OWNER)"  --repoName="$(params.REPO_NAME)" --commit="$HEAD_COMMIT" \
             --detailsUrl="$TEKTON_DAHBOARD_URL" \
             --checkName="Sonar Check" \
             --checkConclusion="$CHECK_CONCLUSION" \
-            --summary="Sonar status: $CHECK_CONCLUSION Details: $(cat .status_link)" \
-            --title="Qulity Gate: $CHECK_CONCLUSION"
-          rm .status_link
-        fi
-
-        rm .sonar
-
-        if [[ -z "$FAILED" ]]; then
-          echo "Oops!"
-          exit 1
-        else
-          echo "Wohoo!"
+            --summary="Details: https://sonarcloud.io/summary/new_code?id=$(params.SONAR_PROJECT_KEY)&pullRequest=$(params.SONAR_PR_KEY)" \
+            --title="Qulity Gate: $(cat $(steps.step-sonar-scan.exitCode.path))"
         fi
       env:
         - name: GH_APP_ID
