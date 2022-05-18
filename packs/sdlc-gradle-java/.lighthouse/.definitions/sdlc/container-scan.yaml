@@ -47,6 +47,10 @@ spec:
     - name: cs-trivy
       image: $(params.TRIVY_IMAGE)
       workingDir: $(workspaces.source.path)
+      onError: continue
+      volumeMounts:
+        - name: $(params.TRIVY_CACHE_PVC)
+          mountPath: /.trivycache/
       env:
         - name: GITHUB_TOKEN
           valueFrom:
@@ -69,16 +73,7 @@ spec:
           exit 0
         fi
 
-        if trivy --cache-dir="/.trivycache/" image --ignore-unfixed="true" --no-progress --exit-code 0 --timeout 30m --severity "$(params.TRIVY_SEVERITY)" --format sarif -o ".trivy-report.sarif" "$MINK_IMAGE" ; then
-          echo "0" > $(results.trivy-result.path)
-        else
-          echo "1" > $(results.trivy-result.path)
-        fi
-
-        echo "Continue..."
-      volumeMounts:
-        - name: $(params.TRIVY_CACHE_PVC)
-          mountPath: /.trivycache/
+        trivy --cache-dir="/.trivycache/" image --ignore-unfixed="true" --no-progress --exit-code 0 --timeout 30m --severity "$(params.TRIVY_SEVERITY)" --format sarif -o ".trivy-report.sarif" "$MINK_IMAGE"
     - name: trivy-publish-report
       image: $(params.SDLC_PIPE_HELPER)
       workingDir: $(workspaces.source.path)
@@ -86,24 +81,11 @@ spec:
         #!/usr/bin/env bash
         source $(workspaces.source.path)/.jx/variables.sh
 
-        if [ "$(cat $(results.trivy-result.path))" == "0" ]; then
-          export CHECK_CONCLUSION="success"
-        else
-          export CHECK_CONCLUSION="failure"
-        fi
-
         sdlcpipelinehelper sarif-publish \
           --repoOwner="$(params.REPO_OWNER)"  --repoName="$(params.REPO_NAME)" --sourceRoot="$(workspaces.source.path)" --commit="$HEAD_COMMIT" \
           --detailsUrl="$TEKTON_DAHBOARD_URL" \
           --checkName="Trivy Container Check" \
-          --checkConclusion="$CHECK_CONCLUSION"
-        
-        if [ "$(cat $(results.trivy-result.path))" == "1" ]; then
-          echo "Trivy scanning completed. $(params.TRIVY_SEVERITY) Vulnerabilities found."
-          exit 1
-        else
-          echo "Trivy scanning completed. $(params.TRIVY_SEVERITY) vulnerabilities not found."
-        fi
+          --checkConclusion="$(cat $(steps.step-cs-trivy.exitCode.path))"
 
         rm .trivy-report.sarif
       env:
@@ -125,6 +107,7 @@ spec:
     - name: cs-dockle
       image: $(params.DOCKLE_IMAGE)
       workingDir: $(workspaces.source.path)
+      onError: continue
       script: |
         source $(workspaces.source.path)/.jx/variables.sh
 
@@ -133,14 +116,8 @@ spec:
           echo "User selected to skip scanning. Skipping Dockle scan."
           exit 0
         fi
-
-        if dockle -f sarif -o ".dockle-report.sarif"  --exit-code 1 --exit-level "$(params.DOCKLE_EXIT_LEVEL)" "$MINK_IMAGE" ; then
-          echo "0" > $(results.dockle-result.path)
-        else
-          echo "1" > $(results.dockle-result.path)
-        fi
-
-        echo "Continue..."
+        
+        dockle -f sarif -o ".dockle-report.sarif"  --exit-code 1 --exit-level "$(params.DOCKLE_EXIT_LEVEL)" "$MINK_IMAGE"
     - name: dockle-publish-report
       image: $(params.SDLC_PIPE_HELPER)
       workingDir: $(workspaces.source.path)
@@ -148,26 +125,13 @@ spec:
         #!/usr/bin/env bash
         source $(workspaces.source.path)/.jx/variables.sh
 
-        if [ "$(cat $(results.dockle-result.path))" == "0" ]; then
-          export CHECK_CONCLUSION="success"
-        else
-          export CHECK_CONCLUSION="failure"
-        fi
-
         sdlcpipelinehelper sarif-publish \
           --repoOwner="$(params.REPO_OWNER)"  --repoName="$(params.REPO_NAME)" --sourceRoot="$(workspaces.source.path)" --commit="$HEAD_COMMIT" \
           --detailsUrl="$TEKTON_DAHBOARD_URL" \
           --checkName="Dockle Container Check" \
-          --checkConclusion="$CHECK_CONCLUSION"
+          --checkConclusion="$(cat $(steps.step-cs-dockle.exitCode.path))"
 
         rm .dockle-report.sarif
-        
-        if [ "$(cat $(results.dockle-result.path))" == "1" ]; then
-          echo "Dockle scanning completed. $(params.DOCKLE_EXIT_LEVEL) Vulnerabilities found."
-          exit 1
-        else
-          echo "Dockle scanning completed. $(params.DOCKLE_EXIT_LEVEL) vulnerabilities not found."
-        fi
       env:
         - name: GH_APP_ID
           valueFrom:

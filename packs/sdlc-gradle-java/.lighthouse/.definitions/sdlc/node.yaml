@@ -12,6 +12,9 @@ spec:
       description: sources dir
   stepTemplate:
     name: ""
+    volumeMounts:
+      - mountPath: /tekton/home/npm
+        name: npmrc
     env:
       - name: NPM_CONFIG_USERCONFIG
         value: /tekton/home/npm/.npmrc
@@ -21,26 +24,27 @@ spec:
       - secretRef:
           name: jx-boot-job-env-vars
           optional: true
+  volumes:
+    - name: npmrc
+      secret:
+        optional: true
+        secretName: npmrc
   steps:
     - image: $(params.NODE_VERSION)
-      name: npm-ci-lint-test
+      name: npm-ci-lint
+      onError: continue
       workingDir: $(workspaces.source.path)
       script: |
         #!/bin/sh
         npm ci
-        
-        if CI=true DISPLAY=:99 npm run lint ; then
-          echo "passed" > .lint.result
-        else
-          echo "failed" > .lint.result
-        fi
-        
-        if CI=true DISPLAY=:99 npm test ; then
-         echo "passed" > .test.result
-        else
-         echo "failed" > .test.result
-        fi
-
+        CI=true DISPLAY=:99 npm run lint
+    - image: $(params.NODE_VERSION)
+      name: npm-ci-test
+      onError: continue
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/bin/sh
+        CI=true DISPLAY=:99 npm test
     - name: npm-test-publish-report
       image: "$(params.SDLC_PIPE_HELPER)"
       workingDir: $(workspaces.source.path)
@@ -61,20 +65,6 @@ spec:
                 --checkName="eslint" \
                 --repoOwner="$(params.REPO_OWNER)"  --repoName="$(params.REPO_NAME)" \
                 --reportPaths="eslint.xml" --commit="$COMMIT"
-        
-        if [[ "$(cat .test.result)" == "passed" ]]; then
-          echo "Tests succesfully passed!"
-        else
-          echo "Something wrong with tests :("
-          exit 1
-        fi
-        
-        if [[ "$(cat .lint.result)" == "passed" ]]; then
-          echo "Tests succesfully passed!"
-        else
-          echo "Something wrong with linter :("
-          exit 1
-        fi
       env:
         - name: GH_APP_ID
           valueFrom:

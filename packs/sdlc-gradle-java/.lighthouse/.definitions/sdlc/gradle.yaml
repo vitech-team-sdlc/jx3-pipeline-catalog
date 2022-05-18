@@ -14,7 +14,7 @@ spec:
     - name: GRADLE_IMAGE
       description: gradle image with jdk
       type: string
-      default: "gradle:7.3-jdk17"
+      default: "gradle:7.4-jdk17"
     - name: GRADLE_JAVA_OPTIONS
       default: "-Xms10m -Xmx256m"
     - name: GRADLE_ARGS
@@ -25,12 +25,9 @@ spec:
     - name: gradle-build
       image: $(params.GRADLE_IMAGE)
       workingDir: $(workspaces.source.path)
+      onError: continue
       script: |
-        if gradle $(params.GRADLE_ARGS) ; then
-          echo "passed" > .test.result
-        else
-          echo "failed" > .test.result
-        fi
+        gradle $(params.GRADLE_ARGS)
       env:
         - name: _JAVA_OPTIONS
           value: "$(params.GRADLE_JAVA_OPTIONS)"
@@ -61,13 +58,6 @@ spec:
           --checkName="JUnit" \
           --repoOwner="$(params.REPO_OWNER)"  --repoName="$(params.REPO_NAME)" \
           --reportPaths="**/test-results/**/TEST-*.xml" --commit="$COMMIT"
-        
-        if [[ "$(cat .test.result)" == "passed" ]]; then
-          echo "Gradle build succesfully passed!"
-        else
-          echo "Something wrong with gradle build :("
-          exit 1
-        fi
       env:
         - name: GH_APP_ID
           valueFrom:
